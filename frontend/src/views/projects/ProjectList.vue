@@ -92,17 +92,6 @@
                       查看
                     </button>
                     <button
-                      class="btn btn-ghost btn-xs"
-                      @click="handleEdit(project.id)"
-                    >
-                      编辑
-                    </button>
-                    <jianying-draft-button
-                      :project-id="project.id"
-                      :project="project"
-                      @generated="handleDraftGenerated(project, $event)"
-                    />
-                    <button
                       class="btn btn-ghost btn-xs text-error"
                       @click="handleDelete(project)"
                     >

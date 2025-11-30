@@ -67,15 +67,37 @@
                   placeholder="请输入原始文案"
                 ></textarea>
               </div>
-              <div class="flex justify-end">
-                <button
-                  class="btn btn-primary"
-                  :disabled="saving"
-                  @click="handleSaveProjectInfo"
-                >
-                  <span v-if="saving" class="loading loading-spinner loading-sm"></span>
-                  {{ saving ? '保存中...' : '保存' }}
-                </button>
+              <div class="flex justify-between items-start gap-4">
+                <!-- 剪映草稿路径显示 -->
+                <div v-if="project?.jianying_draft_path" class="alert alert-info flex-1">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div>
+                    <div class="font-bold">剪映草稿已生成</div>
+                    <div class="text-sm">{{ project.jianying_draft_path }}</div>
+                  </div>
+                </div>
+
+                <!-- 操作按钮组 -->
+                <div class="flex gap-2 items-center">
+                  <!-- 剪映草稿生成按钮 -->
+                  <jianying-draft-button
+                    v-if="project"
+                    :project-id="project.id"
+                    :project="project"
+                    @generated="handleDraftGenerated"
+                  />
+
+                  <button
+                    class="btn btn-primary"
+                    :disabled="saving"
+                    @click="handleSaveProjectInfo"
+                  >
+                    <span v-if="saving" class="loading loading-spinner loading-sm"></span>
+                    {{ saving ? '保存中...' : '保存' }}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -201,6 +223,7 @@ import { mapActions } from 'vuex';
 import StatusBadge from '@/components/common/StatusBadge.vue';
 import LoadingContainer from '@/components/common/LoadingContainer.vue';
 import StageContent from '@/components/projects/StageContent.vue';
+import JianyingDraftButton from '@/components/projects/JianyingDraftButton.vue';
 import { formatDate } from '@/utils/helpers';
 import websocketClient from '@/services/websocketClient';
 
@@ -210,6 +233,7 @@ export default {
     StatusBadge,
     LoadingContainer,
     StageContent,
+    JianyingDraftButton,
   },
   data() {
     return {
@@ -375,6 +399,13 @@ export default {
       } finally {
         this.saving = false;
       }
+    },
+
+    async handleDraftGenerated(data) {
+      console.log('剪映草稿生成成功:', data);
+      this.$message.success(`剪映草稿生成成功！包含 ${data.videoCount} 个视频`);
+      // 重新加载项目数据以更新草稿路径显示
+      await this.fetchData(true); // 保持滚动位置
     },
   },
 };
