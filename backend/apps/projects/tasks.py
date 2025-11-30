@@ -10,6 +10,7 @@ from typing import Dict, Any
 from django.utils import timezone
 
 from core.redis import RedisStreamPublisher
+from core.services.jianying_draft_service import JianyingDraftGenerator
 from apps.content.processors.llm_stage import LLMStageProcessor
 from apps.content.processors.text2image_stage import Text2ImageStageProcessor
 from apps.content.processors.image2video_stage import Image2VideoStageProcessor
@@ -422,6 +423,156 @@ def execute_image2video_stage(
 
         # 重试
         if self.request.retries < self.max_retries:
+            raise self.retry(exc=e, countdown=60)
+
+        return {'success': False, 'error': error_msg}
+
+    finally:
+        publisher.close()
+
+
+@app.task(
+    bind=True,
+    max_retries=2,
+    default_retry_delay=60,
+    acks_late=True,
+    reject_on_worker_lost=True,
+    soft_time_limit=300,  # 5分钟软超时
+    time_limit=600  # 10分钟硬超时
+)
+def generate_jianying_draft(
+    self,
+    project_id: str,
+    user_id: int = None,
+    background_music: str = None,
+    **options
+) -> Dict[str, Any]:
+    """
+    生成剪映草稿任务
+
+    Args:
+        self: Celery任务实例
+        project_id: 项目ID
+        user_id: 用户ID
+        background_music: 背景音乐文件路径（可选）
+        **options: 其他可选参数
+            - draft_folder_path: 草稿保存路径
+            - music_volume: 背景音乐音量
+            - add_intro_animation: 是否添加入场动画
+            等等...
+
+    Returns:
+        Dict包含: success, draft_path, error
+    """
+    task_id = self.request.id
+    channel = f"ai_story:project:{project_id}:jianying_draft"
+
+    logger.info(f"开始生成剪映草稿, 项目: {project_id}, 任务ID: {task_id}")
+
+    publisher = RedisStreamPublisher(project_id, 'jianying_draft')
+
+    try:
+        # 获取项目
+        project = Project.objects.get(id=project_id)
+
+        # 发布开始消息
+        publisher.publish_stage_update(
+            status='processing',
+            progress=0,
+            message='开始生成剪映草稿'
+        )
+
+        # 检查视频生成阶段是否完成
+        video_stage = ProjectStage.objects.filter(
+            project=project,
+            stage_type='video_generation',
+            status='completed'
+        ).first()
+
+        if not video_stage:
+            raise ValueError('视频生成阶段未完成，无法生成剪映草稿')
+
+        # 获取场景数据
+        scenes = video_stage.output_data.get('human_text', {}).get('scenes', [])
+
+        if not scenes:
+            raise ValueError('没有找到视频场景数据')
+
+        # 过滤出有视频的场景
+        valid_scenes = [s for s in scenes if s.get('video_urls')]
+
+        if not valid_scenes:
+            raise ValueError('没有找到已生成的视频')
+
+        logger.info(f"找到 {len(valid_scenes)} 个有效视频场景")
+
+        publisher.publish_stage_update(
+            status='processing',
+            progress=30,
+            message=f'找到 {len(valid_scenes)} 个视频片段，开始生成草稿'
+        )
+
+        # 创建剪映草稿生成器
+        draft_folder_path = options.pop('draft_folder_path', None)
+        generator = JianyingDraftGenerator(draft_folder_path=draft_folder_path)
+
+        # 生成草稿
+        draft_path = generator.generate_from_project_data(
+            project_name=f"{project.name}_{project.id}",
+            scenes=valid_scenes,
+            background_music=background_music,
+            **options
+        )
+
+        logger.info(f"剪映草稿生成成功: {draft_path}")
+
+        # 更新项目的剪映草稿路径
+        project.jianying_draft_path = draft_path
+        project.save(update_fields=['jianying_draft_path'])
+
+        publisher.publish_stage_update(
+            status='completed',
+            progress=100,
+            message='剪映草稿生成完成'
+        )
+
+        publisher.publish_done(
+            full_text=draft_path,
+            metadata={
+                'draft_path': draft_path,
+                'video_count': len(valid_scenes)
+            }
+        )
+
+        return {
+            'success': True,
+            'task_id': task_id,
+            'channel': channel,
+            'draft_path': draft_path
+        }
+
+    except Project.DoesNotExist:
+        error_msg = f'项目不存在: {project_id}'
+        logger.error(error_msg)
+        publisher.publish_error(error_msg)
+        return {'success': False, 'error': error_msg}
+
+    except ValueError as e:
+        error_msg = str(e)
+        logger.error(f'参数错误: {error_msg}')
+        publisher.publish_error(error_msg)
+        return {'success': False, 'error': error_msg}
+
+    except Exception as e:
+        error_msg = f'生成剪映草稿失败: {str(e)}'
+        logger.exception(error_msg)
+
+        # 发布错误消息
+        publisher.publish_error(error_msg, retry_count=self.request.retries)
+
+        # 重试
+        if self.request.retries < self.max_retries:
+            logger.info(f"任务将在60秒后重试 (第{self.request.retries + 1}次)")
             raise self.retry(exc=e, countdown=60)
 
         return {'success': False, 'error': error_msg}

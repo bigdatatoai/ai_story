@@ -183,4 +183,22 @@ export default {
       ...data,
     });
   },
+
+  /**
+   * 生成剪映草稿
+   * @param {String} projectId - 项目ID
+   * @param {Object} options - 可选参数
+   *   {
+   *     background_music: String,      // 背景音乐路径
+   *     draft_folder_path: String,     // 草稿保存路径
+   *     music_volume: Number,          // 音乐音量 (0-1)
+   *     add_intro_animation: Boolean,  // 是否添加入场动画
+   *     subtitle_size: Number,         // 字幕大小
+   *     width: Number,                 // 视频宽度
+   *     height: Number                 // 视频高度
+   *   }
+   */
+  generateJianyingDraft(projectId, options = {}) {
+    return apiClient.post(`/projects/projects/${projectId}/generate-jianying-draft/`, options);
+  },
 };

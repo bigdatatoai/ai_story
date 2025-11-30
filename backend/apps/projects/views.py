@@ -659,6 +659,78 @@ class ProjectViewSet(viewsets.ModelViewSet):
             }
         )
 
+    @action(detail=True, methods=["post"])
+    def generate_jianying_draft(self, request, pk=None):
+        """
+        生成剪映草稿
+        POST /api/v1/projects/{id}/generate-jianying-draft/
+        Body: {
+            "background_music": "/path/to/music.mp3",  // 可选
+            "draft_folder_path": "/path/to/drafts",    // 可选
+            "music_volume": 0.6,                       // 可选，默认0.6
+            "add_intro_animation": true,               // 可选，默认true
+            "subtitle_size": 15,                       // 可选，默认15
+            "width": 1080,                             // 可选，默认1080
+            "height": 1920                             // 可选，默认1920（竖屏）
+        }
+
+        返回:
+        {
+            "task_id": "celery-task-id",
+            "channel": "ai_story:project:xxx:jianying_draft",
+            "message": "剪映草稿生成任务已启动"
+        }
+        """
+        from apps.projects.tasks import generate_jianying_draft
+
+        project = self.get_object()
+
+        # 检查视频生成阶段是否完成
+        video_stage = ProjectStage.objects.filter(
+            project=project, stage_type="video_generation", status="completed"
+        ).first()
+
+        if not video_stage:
+            return Response(
+                {"error": "视频生成阶段未完成，无法生成剪映草稿"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 获取可选参数
+        background_music = request.data.get("background_music")
+        options = {
+            "draft_folder_path": request.data.get("draft_folder_path"),
+            "music_volume": request.data.get("music_volume", 0.6),
+            "add_intro_animation": request.data.get("add_intro_animation", True),
+            "subtitle_size": request.data.get("subtitle_size", 15),
+            "width": request.data.get("width", 1080),
+            "height": request.data.get("height", 1920),
+        }
+
+        # 过滤掉None值
+        options = {k: v for k, v in options.items() if v is not None}
+
+        # 启动Celery任务
+        task = generate_jianying_draft.delay(
+            project_id=str(project.id),
+            user_id=self.request.user.id,
+            background_music=background_music,
+            **options
+        )
+
+        # 构建Redis频道名称
+        channel = f"ai_story:project:{project.id}:jianying_draft"
+
+        return Response(
+            {
+                "task_id": task.id,
+                "channel": channel,
+                "message": "剪映草稿生成任务已启动",
+                "websocket_url": f"/ws/projects/{project.id}/jianying_draft/",
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
+
 
 class ProjectStageViewSet(viewsets.ReadOnlyModelViewSet):
     """

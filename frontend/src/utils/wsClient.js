@@ -198,6 +198,56 @@ class WSClient {
 }
 
 /**
+ * 直接连接到指定的WebSocket URL
+ * @param {string} url - 完整的WebSocket URL
+ * @param {Object} callbacks - 回调函数 { onMessage, onError, onClose, onOpen }
+ * @returns {WebSocket} WebSocket实例
+ */
+function connectToUrl(url, callbacks = {}) {
+  console.log('[WebSocket] 直接连接到:', url);
+
+  const ws = new WebSocket(url);
+
+  ws.onopen = () => {
+    console.log('[WebSocket] 连接已建立');
+    if (callbacks.onOpen) callbacks.onOpen();
+  };
+
+  ws.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      console.log('[WebSocket] 收到消息:', data);
+      if (callbacks.onMessage) callbacks.onMessage(data);
+    } catch (error) {
+      console.error('[WebSocket] 解析消息失败:', error);
+      if (callbacks.onError) callbacks.onError(error);
+    }
+  };
+
+  ws.onclose = (event) => {
+    console.log('[WebSocket] 连接已关闭', event.code, event.reason);
+    if (callbacks.onClose) callbacks.onClose(event);
+  };
+
+  ws.onerror = (error) => {
+    console.error('[WebSocket] 连接错误:', error);
+    if (callbacks.onError) callbacks.onError(error);
+  };
+
+  return ws;
+}
+
+/**
+ * 关闭WebSocket连接
+ * @param {WebSocket} ws - WebSocket实例
+ */
+function closeConnection(ws) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.close(1000, 'Client disconnect');
+  }
+}
+
+/**
  * 创建一个用于项目阶段执行的WebSocket客户端
  * @param {string} projectId - 项目ID
  * @param {string} stageName - 阶段名称
@@ -227,4 +277,9 @@ export function createStageWSClient(projectId, stageName, options = {}) {
   return client;
 }
 
-export default WSClient;
+export default {
+  WSClient,
+  connect: connectToUrl,
+  close: closeConnection,
+  createStageWSClient,
+};

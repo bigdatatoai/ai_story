@@ -15,7 +15,7 @@ from rest_framework.permissions import AllowAny
 
 class StorageImageListView(APIView):
     """
-    获取 storage/image 目录下的所有图片列表
+    获取 storage/image 目录下的所有图片列表（递归遍历子目录）
     """
     permission_classes = [AllowAny]  # 允许未认证访问
 
@@ -38,14 +38,18 @@ class StorageImageListView(APIView):
             image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg'}
 
             images = []
-            for file_path in image_dir.iterdir():
+            # 递归遍历所有子目录
+            for file_path in image_dir.rglob('*'):
                 if file_path.is_file() and file_path.suffix.lower() in image_extensions:
                     stat = file_path.stat()
+                    # 计算相对于image目录的路径
+                    relative_path = file_path.relative_to(image_dir)
                     images.append({
                         'name': file_path.name,
+                        'path': str(relative_path),  # 例如: 2025-11-30/xx.png
                         'size': stat.st_size,
                         'modified_time': stat.st_mtime,
-                        'url': f'/api/v1/storage/image/{file_path.name}'
+                        'url': f'/api/v1/content/storage/image/{relative_path}'
                     })
 
             # 按修改时间倒序排列
@@ -68,17 +72,19 @@ class StorageImageListView(APIView):
 
 class StorageImageDetailView(APIView):
     """
-    访问 storage/image 目录下的单个图片文件
+    访问 storage/image 目录下的单个图片文件（支持日期子目录）
+    例如: /api/v1/content/storage/image/2025-11-30/xx.png
     """
     permission_classes = [AllowAny]  # 允许未认证访问
 
-    def get(self, request, filename):
+    def get(self, request, filepath):
         """
         返回指定的图片文件
+        :param filepath: 相对于storage/image的文件路径，例如: 2025-11-30/xx.png
         """
         try:
             # 构建文件路径
-            image_path = Path(settings.STORAGE_ROOT) / 'image' / filename
+            image_path = Path(settings.STORAGE_ROOT) / 'image' / filepath
 
             # 安全检查：确保路径在允许的目录内（防止路径遍历攻击）
             storage_root = Path(settings.STORAGE_ROOT).resolve()
@@ -119,17 +125,19 @@ class StorageImageDetailView(APIView):
 
 class StorageVideoDetailView(APIView):
     """
-    获取 storage/video 目录下的所有视频列表
+    访问 storage/video 目录下的单个视频文件（支持日期子目录）
+    例如: /api/v1/content/storage/video/2025-11-30/xx.mp4
     """
     permission_classes = [AllowAny]  # 允许未认证访问
 
-    def get(self, request, filename):
+    def get(self, request, filepath):
         """
-        返回指定的图片文件
+        返回指定的视频文件
+        :param filepath: 相对于storage/video的文件路径，例如: 2025-11-30/xx.mp4
         """
         try:
             # 构建文件路径
-            video_path = Path(settings.STORAGE_ROOT) / 'video' / filename
+            video_path = Path(settings.STORAGE_ROOT) / 'video' / filepath
 
             # 安全检查：确保路径在允许的目录内（防止路径遍历攻击）
             storage_root = Path(settings.STORAGE_ROOT).resolve()
@@ -140,15 +148,29 @@ class StorageVideoDetailView(APIView):
 
             # 检查文件是否存在
             if not video_path.exists() or not video_path.is_file():
-                raise Http404('图片文件不存在')
+                raise Http404('视频文件不存在')
 
             # 返回文件响应
             return FileResponse(
                 open(video_path, 'rb'),
-                content_type='video/mp4'
+                content_type=self._get_content_type(video_path.suffix)
             )
 
         except Http404:
             raise
         except Exception as e:
-            raise Http404(f'访问图片失败: {str(e)}')
+            raise Http404(f'访问视频失败: {str(e)}')
+
+    def _get_content_type(self, extension):
+        """
+        根据文件扩展名返回对应的 Content-Type
+        """
+        content_types = {
+            '.mp4': 'video/mp4',
+            '.avi': 'video/x-msvideo',
+            '.mov': 'video/quicktime',
+            '.wmv': 'video/x-ms-wmv',
+            '.flv': 'video/x-flv',
+            '.webm': 'video/webm',
+        }
+        return content_types.get(extension.lower(), 'application/octet-stream')

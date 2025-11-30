@@ -339,6 +339,18 @@ const actions = {
       throw error;
     }
   },
+
+  // 生成剪映草稿
+  async generateJianyingDraft({ commit }, { projectId, options }) {
+    try {
+      const result = await projectApi.generateJianyingDraft(projectId, options);
+      // 返回 { task_id, channel, message, websocket_url }
+      return result;
+    } catch (error) {
+      console.error('生成剪映草稿失败:', error);
+      throw error;
+    }
+  },
 };
 
 export default {

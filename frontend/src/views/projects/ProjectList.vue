@@ -84,7 +84,7 @@
                 </td>
                 <td>{{ formatDate(project.created_at) }}</td>
                 <td>
-                  <div class="flex gap-2">
+                  <div class="flex gap-2 flex-wrap">
                     <button
                       class="btn btn-ghost btn-xs"
                       @click="handleView(project.id)"
@@ -97,6 +97,11 @@
                     >
                       编辑
                     </button>
+                    <jianying-draft-button
+                      :project-id="project.id"
+                      :project="project"
+                      @generated="handleDraftGenerated(project, $event)"
+                    />
                     <button
                       class="btn btn-ghost btn-xs text-error"
                       @click="handleDelete(project)"
@@ -164,6 +169,7 @@ import { mapState, mapActions } from 'vuex';
 import PageCard from '@/components/common/PageCard.vue';
 import StatusBadge from '@/components/common/StatusBadge.vue';
 import LoadingContainer from '@/components/common/LoadingContainer.vue';
+import JianyingDraftButton from '@/components/projects/JianyingDraftButton.vue';
 import { formatDate } from '@/utils/helpers';
 
 export default {
@@ -172,6 +178,7 @@ export default {
     PageCard,
     StatusBadge,
     LoadingContainer,
+    JianyingDraftButton,
   },
   data() {
     return {
@@ -257,6 +264,16 @@ export default {
       } catch (error) {
         console.error('Failed to delete project:', error);
       }
+    },
+
+    handleDraftGenerated(project, data) {
+      console.log('剪映草稿生成成功:', data);
+      // 更新项目数据（可选）
+      // 可以显示成功提示
+      alert(`剪映草稿生成成功！\n路径: ${data.draftPath}\n视频数量: ${data.videoCount}`);
+
+      // 刷新项目列表以更新jianying_draft_path字段
+      this.fetchData();
     },
   },
 };

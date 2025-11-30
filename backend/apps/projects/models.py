@@ -31,6 +31,7 @@ class Project(models.Model):
     # 业务字段
     original_topic = models.TextField('原始主题')
     status = models.CharField('状态', max_length=20, choices=STATUS_CHOICES, default='draft')
+    jianying_draft_path = models.CharField('剪映草稿路径', max_length=500, blank=True, default='')
 
     # 关联配置
     prompt_template_set = models.ForeignKey(
