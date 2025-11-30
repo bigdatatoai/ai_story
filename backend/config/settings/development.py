@@ -34,3 +34,4 @@ LOGGING = {
         'level': 'DEBUG',
     },
 }
+JIANYING_DRAFT_FOLDER = "D:\JianyingPro Drafts"
