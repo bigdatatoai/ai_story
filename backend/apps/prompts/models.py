@@ -206,7 +206,7 @@ class GlobalVariable(models.Model):
             return self.value
 
     @classmethod
-    async def get_variables_for_user(cls, user, include_system=True):
+    def get_variables_for_user(cls, user, include_system=True):
         """
         获取用户可用的所有变量
 
@@ -225,7 +225,7 @@ class GlobalVariable(models.Model):
             query |= Q(scope='system', is_active=True)
 
         variables = {}
-        async for var in cls.objects.filter(query):
+        for var in cls.objects.filter(query):
             variables[var.key] = var.get_typed_value()
 
         return variables

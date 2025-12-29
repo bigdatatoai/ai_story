@@ -309,7 +309,7 @@ class LLMStageProcessor(StageProcessor):
         from apps.prompts.models import GlobalVariable
 
         # 获取项目创建者的全局变量
-        user = project.created_by
+        user = project.user
         variables = GlobalVariable.get_variables_for_user(
             user=user,
             include_system=True

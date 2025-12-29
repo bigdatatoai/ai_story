@@ -329,12 +329,12 @@ class Text2ImageStageProcessor(StageProcessor):
             updated_output = copy.deepcopy(video_stage.output_data or {})
 
             # 确保数据结构存在
-            if "human_text" not in updated_input:
+            if "human_text" not in updated_input or not updated_input.get("human_text"):
                 updated_input["human_text"] = {}
             if "scenes" not in updated_input["human_text"]:
                 updated_input["human_text"]["scenes"] = []
 
-            if "human_text" not in updated_output:
+            if "human_text" not in updated_output or not updated_output.get("human_text"):
                 updated_output["human_text"] = {}
             if "scenes" not in updated_output["human_text"]:
                 updated_output["human_text"]["scenes"] = []
@@ -407,7 +407,7 @@ class Text2ImageStageProcessor(StageProcessor):
 
         return template
 
-    async def _get_global_variables(self, project: Project) -> Dict[str, Any]:
+    def _get_global_variables(self, project: Project) -> Dict[str, Any]:
         """
         获取全局变量
         包括用户级和系统级变量
@@ -415,8 +415,8 @@ class Text2ImageStageProcessor(StageProcessor):
         from apps.prompts.models import GlobalVariable
 
         # 获取项目创建者的全局变量
-        user = await project.created_by
-        variables = await GlobalVariable.get_variables_for_user(
+        user = project.user
+        variables = GlobalVariable.get_variables_for_user(
             user=user,
             include_system=True
         )
@@ -427,17 +427,7 @@ class Text2ImageStageProcessor(StageProcessor):
         """
         同步获取全局变量（用于非异步上下文）
         """
-        import asyncio
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # 如果事件循环正在运行，创建新任务
-                return asyncio.create_task(self._get_global_variables(project))
-            else:
-                return loop.run_until_complete(self._get_global_variables(project))
-        except RuntimeError:
-            # 没有事件循环，创建新的
-            return asyncio.run(self._get_global_variables(project))
+        return self._get_global_variables(project)
 
     def _build_prompt(self, project: Project, storyboard: dict) -> str:
         """
