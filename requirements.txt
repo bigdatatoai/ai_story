@@ -93,3 +93,4 @@ vine==5.1.0
     #   kombu
 wcwidth==0.2.14
     # via prompt-toolkit
+djangorestframework-simplejwt
