@@ -572,9 +572,9 @@ class Image2VideoStageProcessor(StageProcessor):
             raise ValueError(f"分镜 {storyboard.get('scene_number', '')} 没有图片URL")
         storyboard_copy = copy.deepcopy(storyboard)
         image_url = urls[0].get("url", "")
-        basename = os.path.basename(image_url)
         image_dir = Path(settings.STORAGE_ROOT) / 'image'
-        image_path = image_dir / basename
+        path_list = image_url.split("/")[-2:]
+        image_path = Path(image_dir, *path_list)
         base64_image = self.image_to_base64(image_path)
         storyboard_copy["url"] = base64_image
         try:

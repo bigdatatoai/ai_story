@@ -330,7 +330,8 @@ class JianyingDraftGenerator:
                 # 假设视频存储在 STORAGE_ROOT/video 目录
                 storage_root = getattr(settings, 'STORAGE_ROOT', '')
                 video_dir = Path(storage_root) / 'video'
-                video_path = str(video_dir / os.path.basename(video_path))
+                path_list = video_path.split("/")[-2:]
+                video_path = str(Path(video_dir, *path_list))
 
             if not os.path.exists(video_path):
                 logger.warning(f"视频文件不存在: {video_path}，跳过")
