@@ -170,6 +170,70 @@ const routes = [
       },
     ],
   },
+  // AI视频生产路由
+  {
+    path: '/video',
+    component: () => import('@/views/Layout.vue'),
+    meta: { requiresAuth: true },
+    children: [
+      {
+        path: '',
+        name: 'VideoProductionDashboard',
+        component: () => import('@/components/video/VideoProductionDashboardSimple.vue'),
+        meta: { title: 'AI视频生产控制台' },
+      },
+      {
+        path: 'drama-studio',
+        name: 'DramaProductionStudio',
+        component: () => import('@/components/video/DramaProductionStudio.vue'),
+        meta: { title: 'AI短剧制作工作室' },
+      },
+      {
+        path: 'anime-studio',
+        name: 'AnimeGenerationStudio',
+        component: () => import('@/components/video/AnimeGenerationStudio.vue'),
+        meta: { title: 'AI动漫生成工作室' },
+      },
+      {
+        path: 'batch-manager',
+        name: 'BatchProductionManager',
+        component: () => import('@/components/video/BatchProductionManager.vue'),
+        meta: { title: '批量生产管理' },
+      },
+      {
+        path: 'characters',
+        name: 'CharacterConsistencyManager',
+        component: () => import('@/components/video/CharacterConsistencyManager.vue'),
+        meta: { title: '角色一致性管理' },
+      },
+    ],
+  },
+  // 故事生成路由
+  {
+    path: '/story',
+    component: () => import('@/views/Layout.vue'),
+    meta: { requiresAuth: true },
+    children: [
+      {
+        path: 'generator',
+        name: 'StoryGenerator',
+        component: () => import('@/components/story/StoryGeneratorSimple.vue'),
+        meta: { title: 'AI故事生成器' },
+      },
+      {
+        path: 'library',
+        name: 'StoryLibrary',
+        component: () => import('@/components/story/StoryLibrary.vue'),
+        meta: { title: '故事库' },
+      },
+      {
+        path: 'outline-editor',
+        name: 'OutlineEditor',
+        component: () => import('@/components/story/OutlineEditor.vue'),
+        meta: { title: '大纲编辑器' },
+      },
+    ],
+  },
   // 404页面
   {
     path: '/404',

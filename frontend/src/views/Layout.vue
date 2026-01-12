@@ -175,6 +175,46 @@
 
         <!-- 导航菜单 -->
         <ul class="menu p-2 w-full" :class="sidebarCollapsed ? 'menu-compact' : ''">
+          <!-- AI视频生产 -->
+          <li class="menu-title" v-show="!sidebarCollapsed">
+            <span>AI视频生产</span>
+          </li>
+          <li>
+            <router-link
+              to="/video"
+              :class="{ 'active': activeMenu.startsWith('/video') }"
+              class="flex items-center gap-3 tooltip tooltip-right"
+              :data-tip="sidebarCollapsed ? 'AI视频控制台' : ''"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 flex-shrink-0">
+                <path stroke-linecap="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
+              </svg>
+              <span v-show="!sidebarCollapsed" class="transition-opacity duration-300" :class="sidebarCollapsed ? 'opacity-0' : 'opacity-100'">视频控制台</span>
+            </router-link>
+          </li>
+          
+          <!-- AI故事生成 -->
+          <li class="menu-title" v-show="!sidebarCollapsed">
+            <span>AI故事生成</span>
+          </li>
+          <li>
+            <router-link
+              to="/story/generator"
+              :class="{ 'active': activeMenu.startsWith('/story') }"
+              class="flex items-center gap-3 tooltip tooltip-right"
+              :data-tip="sidebarCollapsed ? '故事生成器' : ''"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 flex-shrink-0">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+              </svg>
+              <span v-show="!sidebarCollapsed" class="transition-opacity duration-300" :class="sidebarCollapsed ? 'opacity-0' : 'opacity-100'">故事生成器</span>
+            </router-link>
+          </li>
+
+          <!-- 项目管理 -->
+          <li class="menu-title" v-show="!sidebarCollapsed">
+            <span>项目管理</span>
+          </li>
           <li>
             <router-link
               to="/projects"
