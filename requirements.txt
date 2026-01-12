@@ -9,6 +9,8 @@ asgiref==3.10.0
     #   django
     #   django-cors-headers
 billiard==4.2.2
+pyJianYingDraft
+opencv-python
     # via celery
 celery==5.5.0b2
     # via

@@ -1,8 +1,34 @@
 <template>
   <div class="model-form">
-    <page-card :title="isEdit ? '编辑模型' : '添加模型'">
+    <!-- 页面头部 - 现代化设计 -->
+    <div class="page-header">
+      <div class="header-content">
+        <div class="header-left">
+          <button @click="goBack" class="back-button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 12H5M12 19l-7-7 7-7"/>
+            </svg>
+          </button>
+          <div>
+            <h1 class="page-title">{{ isEdit ? '编辑模型' : '添加模型' }}</h1>
+            <p class="page-subtitle">配置AI模型提供商信息</p>
+          </div>
+        </div>
+        <button type="submit" form="model-form" class="save-button" :disabled="saving">
+          <svg v-if="!saving" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+            <polyline points="17 21 17 13 7 13 7 21"/>
+            <polyline points="7 3 7 8 15 8"/>
+          </svg>
+          <span>{{ saving ? '保存中...' : '保存' }}</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 表单内容 -->
+    <div class="form-wrapper">
       <loading-container :loading="loading">
-        <form @submit.prevent="handleSubmit" class="space-y-6">
+        <form id="model-form" @submit.prevent="handleSubmit" class="space-y-6">
           <!-- 基本信息 -->
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="form-control">
@@ -300,36 +326,19 @@
             </div>
           </div>
 
-          <!-- 操作按钮 -->
-          <div class="flex gap-3 pt-4">
-            <button type="submit" class="btn btn-primary" :disabled="submitting">
-              <span v-if="submitting" class="loading loading-spinner loading-sm"></span>
-              {{ submitting ? '保存中...' : '保存' }}
-            </button>
-            <button
-              type="button"
-              class="btn btn-ghost"
-              @click="handleCancel"
-              :disabled="submitting"
-            >
-              取消
-            </button>
-          </div>
         </form>
       </loading-container>
-    </page-card>
+    </div>
   </div>
 </template>
 
 <script>
 import { mapActions, mapState } from 'vuex'
-import PageCard from '@/components/common/PageCard.vue'
 import LoadingContainer from '@/components/common/LoadingContainer.vue'
 
 export default {
   name: 'ModelForm',
   components: {
-    PageCard,
     LoadingContainer
   },
   data() {
@@ -475,7 +484,114 @@ export default {
 
     handleCancel() {
       this.$router.push({ name: 'ModelList' })
+    },
+
+    goBack() {
+      this.$router.push({ name: 'ModelList' })
     }
   }
 }
 </script>
+
+<style scoped>
+.model-form {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* 页面头部 */
+.page-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 20px;
+  padding: 30px 40px;
+  margin-bottom: 30px;
+  box-shadow: 0 10px 40px rgba(102, 126, 234, 0.3);
+}
+
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  color: white;
+}
+
+.back-button {
+  width: 40px;
+  height: 40px;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.back-button:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: translateX(-3px);
+}
+
+.back-button svg {
+  width: 20px;
+  height: 20px;
+  color: white;
+}
+
+.page-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: white;
+  margin-bottom: 4px;
+}
+
+.page-subtitle {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.save-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 24px;
+  background: white;
+  color: #667eea;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.save-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.save-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.save-button svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* 表单容器 */
+.form-wrapper {
+  background: white;
+  border-radius: 20px;
+  padding: 40px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+</style>

@@ -542,26 +542,40 @@ class ProjectViewSet(viewsets.ModelViewSet):
         """
         将项目保存为模板
         POST /api/v1/projects/{id}/save-as-template/
-        Body: {"template_name": "我的模板", "include_model_config": true}
+        Body: {
+            "template_name": "我的模板",
+            "description": "模板描述",
+            "include_model_config": true,
+            "is_public": false
+        }
         """
+        from apps.projects.services.template_service import ProjectTemplateService
+        
         project = self.get_object()
         serializer = ProjectTemplateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         template_name = serializer.validated_data["template_name"]
-        include_model_config = serializer.validated_data["include_model_config"]
+        description = serializer.validated_data.get("description", "")
+        include_model_config = serializer.validated_data.get("include_model_config", True)
+        is_public = serializer.validated_data.get("is_public", False)
 
-        # TODO: 实现模板保存逻辑
-        # 1. 复制项目基本信息
-        # 2. 复制提示词集配置
-        # 3. 如果include_model_config=True,复制模型配置
-        # 4. 保存为可复用模板
+        # 使用服务保存模板
+        template = ProjectTemplateService.save_as_template(
+            project=project,
+            template_name=template_name,
+            description=description,
+            include_model_config=include_model_config,
+            is_public=is_public
+        )
 
         return Response(
             {
                 "message": f"项目已保存为模板: {template_name}",
+                "template_id": str(template.id),
                 "template_name": template_name,
-            }
+            },
+            status=status.HTTP_201_CREATED
         )
 
     @action(detail=True, methods=["post"])
@@ -570,7 +584,16 @@ class ProjectViewSet(viewsets.ModelViewSet):
         导出项目(合成视频、生成字幕)
         POST /api/v1/projects/{id}/export/
         Body: {"include_subtitles": true, "video_format": "mp4"}
+        
+        Returns:
+        {
+            "task_id": "celery-task-id",
+            "channel": "ai_story:project:xxx:export",
+            "message": "导出任务已启动"
+        }
         """
+        from apps.projects.tasks import export_project_video
+        
         project = self.get_object()
 
         if project.status != "completed":
@@ -581,18 +604,25 @@ class ProjectViewSet(viewsets.ModelViewSet):
         include_subtitles = request.data.get("include_subtitles", True)
         video_format = request.data.get("video_format", "mp4")
 
-        # TODO: 实现视频导出逻辑
-        # 1. 获取所有生成的视频片段
-        # 2. 按分镜顺序合成完整视频
-        # 3. 如果include_subtitles=True,生成并嵌入字幕
-        # 4. 返回下载链接
+        # 启动Celery导出任务
+        task = export_project_video.delay(
+            project_id=str(project.id),
+            user_id=self.request.user.id,
+            include_subtitles=include_subtitles,
+            video_format=video_format
+        )
+
+        # 构建Redis频道名称
+        channel = f"ai_story:project:{project.id}:export"
 
         return Response(
             {
-                "message": "导出任务已创建",
-                "export_id": "TODO",
-                "status": "processing",
-            }
+                "task_id": task.id,
+                "channel": channel,
+                "message": "导出任务已启动",
+                "project_id": str(project.id),
+            },
+            status=status.HTTP_202_ACCEPTED
         )
 
     @action(detail=False, methods=["get"])

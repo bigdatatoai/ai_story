@@ -4,6 +4,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth.models import User
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
 
 from .serializers import (
     UserSerializer,
@@ -13,6 +15,7 @@ from .serializers import (
 )
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class LoginView(APIView):
     """
     用户登录视图
@@ -43,6 +46,7 @@ class LoginView(APIView):
         }, status=status.HTTP_200_OK)
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class RegisterView(generics.CreateAPIView):
     """
     用户注册视图
@@ -53,23 +57,38 @@ class RegisterView(generics.CreateAPIView):
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        user = serializer.save()
+        
+        try:
+            serializer.is_valid(raise_exception=True)
+            user = serializer.save()
 
-        # 生成JWT token
-        refresh = RefreshToken.for_user(user)
+            # 生成JWT token
+            refresh = RefreshToken.for_user(user)
 
-        return Response({
-            'success': True,
-            'message': '注册成功',
-            'data': {
-                'user': UserSerializer(user).data,
-                'tokens': {
-                    'access': str(refresh.access_token),
-                    'refresh': str(refresh)
+            return Response({
+                'success': True,
+                'message': '注册成功',
+                'data': {
+                    'user': UserSerializer(user).data,
+                    'tokens': {
+                        'access': str(refresh.access_token),
+                        'refresh': str(refresh)
+                    }
                 }
-            }
-        }, status=status.HTTP_201_CREATED)
+            }, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            # 返回详细的错误信息
+            error_detail = {}
+            if hasattr(e, 'detail'):
+                error_detail = e.detail
+            elif hasattr(serializer, 'errors'):
+                error_detail = serializer.errors
+            
+            return Response({
+                'success': False,
+                'message': '注册失败',
+                'errors': error_detail
+            }, status=status.HTTP_400_BAD_REQUEST)
 
 
 class LogoutView(APIView):

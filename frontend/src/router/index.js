@@ -58,6 +58,12 @@ const routes = [
         component: () => import('@/views/projects/ProjectEdit.vue'),
         meta: { title: '编辑项目' },
       },
+      {
+        path: ':id/workflow',
+        name: 'ProjectWorkflow',
+        component: () => import('@/views/projects/ProjectWorkflow.vue'),
+        meta: { title: '工作流编辑器' },
+      },
     ],
   },
   // 提示词管理路由
@@ -110,6 +116,20 @@ const routes = [
       },
     ],
   },
+  // 内容管理路由
+  {
+    path: '/content',
+    component: () => import('@/views/Layout.vue'),
+    meta: { requiresAuth: true },
+    children: [
+      {
+        path: '',
+        name: 'ContentList',
+        component: () => import('@/views/content/ContentList.vue'),
+        meta: { title: '内容管理' },
+      },
+    ],
+  },
   // 模型管理路由
   {
     path: '/models',
@@ -124,15 +144,29 @@ const routes = [
       },
       {
         path: 'create',
-        name: 'model-create',
+        name: 'ModelCreate',
         component: () => import('@/views/models/ModelForm.vue'),
         meta: { title: '添加模型' },
       },
       {
         path: ':id/edit',
-        name: 'model-edit',
+        name: 'ModelEdit',
         component: () => import('@/views/models/ModelForm.vue'),
         meta: { title: '编辑模型' },
+      },
+    ],
+  },
+  // 系统设置路由
+  {
+    path: '/settings',
+    component: () => import('@/views/Layout.vue'),
+    meta: { requiresAuth: true },
+    children: [
+      {
+        path: '',
+        name: 'SystemSettings',
+        component: () => import('@/views/settings/SystemSettings.vue'),
+        meta: { title: '系统设置' },
       },
     ],
   },
@@ -165,7 +199,7 @@ const router = new VueRouter({
 router.beforeEach((to, from, next) => {
   // 设置页面标题
   if (to.meta.title) {
-    document.title = `${to.meta.title} - AI Story生成系统`;
+    document.title = `${to.meta.title} - 智绘视界`;
   }
 
   // 获取认证状态

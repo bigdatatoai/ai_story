@@ -1,14 +1,27 @@
 <template>
   <div class="project-detail">
     <loading-container :loading="loading">
-      <!-- 项目头部信息 -->
-      <div class="bg-base-100 rounded-lg shadow-sm p-6 mb-4">
-        <div class="flex justify-between items-center">
-          <div>
-            <h1 class="text-2xl font-bold">{{ project?.name || '加载中...' }}</h1>
-            <p class="text-sm text-base-content/60 mt-1">{{ project?.description || '暂无描述' }}</p>
+      <!-- 项目头部信息 - 现代化设计 -->
+      <div class="project-header">
+        <div class="header-background"></div>
+        <div class="header-content">
+          <div class="header-left">
+            <h1 class="project-title">{{ project?.name || '加载中...' }}</h1>
+            <p class="project-description">{{ project?.description || '暂无描述' }}</p>
           </div>
-          <status-badge v-if="project" :status="project.status" type="project" />
+          <div class="header-actions">
+            <button
+              v-if="project"
+              @click="openWorkflowEditor"
+              class="workflow-btn"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+              </svg>
+              <span>工作流编辑器</span>
+            </button>
+            <status-badge v-if="project" :status="project.status" type="project" />
+          </div>
         </div>
       </div>
 
@@ -81,6 +94,17 @@
 
                 <!-- 操作按钮组 -->
                 <div class="flex gap-2 items-center">
+                  <!-- 工作流编辑器按钮 -->
+                  <button
+                    class="btn btn-accent btn-sm"
+                    @click="openWorkflowEditor"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                    </svg>
+                    工作流编辑器
+                  </button>
+                  
                   <!-- 剪映草稿生成按钮 -->
                   <jianying-draft-button
                     v-if="project"
@@ -212,6 +236,24 @@
               @stage-completed="handleStageCompleted"
             />
           </div>
+
+          <!-- 高级功能标签页 -->
+          <input
+            type="radio"
+            name="project_tabs"
+            role="tab"
+            class="tab"
+            aria-label="高级功能"
+            :checked="activeTab === 'advanced'"
+            @change="activeTab = 'advanced'"
+          />
+          <div role="tabpanel" class="tab-content bg-base-100 border-base-300 rounded-box p-6">
+            <advanced-services
+              v-if="project"
+              :project-id="project.id"
+              :project="project"
+            />
+          </div>
         </div>
       </div>
     </loading-container>
@@ -224,6 +266,7 @@ import StatusBadge from '@/components/common/StatusBadge.vue';
 import LoadingContainer from '@/components/common/LoadingContainer.vue';
 import StageContent from '@/components/projects/StageContent.vue';
 import JianyingDraftButton from '@/components/projects/JianyingDraftButton.vue';
+import AdvancedServices from '@/components/projects/AdvancedServices.vue';
 import { formatDate } from '@/utils/helpers';
 import websocketClient from '@/services/websocketClient';
 
@@ -234,6 +277,7 @@ export default {
     LoadingContainer,
     StageContent,
     JianyingDraftButton,
+    AdvancedServices,
   },
   data() {
     return {
@@ -297,6 +341,10 @@ export default {
           original_topic: this.project.original_topic || '',
         };
       }
+    },
+
+    openWorkflowEditor() {
+      this.$router.push(`/projects/${this.project.id}/workflow`);
     },
 
     connectWebSocket() {
@@ -412,6 +460,108 @@ export default {
 </script>
 
 <style scoped>
+/* 项目头部现代化样式 */
+.project-header {
+  position: relative;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 20px;
+  padding: 40px;
+  margin-bottom: 24px;
+  overflow: hidden;
+  box-shadow: 0 10px 40px rgba(102, 126, 234, 0.3);
+}
+
+.header-background {
+  position: absolute;
+  top: -50%;
+  right: -10%;
+  width: 300px;
+  height: 300px;
+  background: radial-gradient(circle, rgba(255,255,255,0.2) 0%, transparent 70%);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.header-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+}
+
+.header-left {
+  flex: 1;
+  min-width: 0;
+}
+
+.project-title {
+  font-size: 32px;
+  font-weight: 800;
+  color: white;
+  margin-bottom: 8px;
+  letter-spacing: -0.5px;
+}
+
+.project-description {
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.9);
+  line-height: 1.5;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.workflow-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: white;
+  color: #667eea;
+  border: none;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.workflow-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+}
+
+.workflow-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+@media (max-width: 768px) {
+  .project-header {
+    padding: 24px;
+  }
+
+  .header-content {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .project-title {
+    font-size: 24px;
+  }
+
+  .workflow-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
 .project-detail {
   width: 100%;
   max-width: 100%;

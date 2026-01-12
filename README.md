@@ -40,6 +40,7 @@ cd backend
 # 2. 创建虚拟环境
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
+venv\Scripts\activate     # Windows
 
 # 3. 安装依赖
 pip install -r requirements.txt
@@ -52,7 +53,18 @@ python manage.py createsuperuser
 
 # 6. 启动开发服务器
 python manage.py runserver
+
+# 7. 启动 Celery Worker (新终端窗口)
+celery -A config worker -l info
+
+# 8. 启动 Celery Beat 定时任务 (可选，新终端窗口)
+celery -A config beat -l info
 ```
+
+**注意：** 
+- 步骤 6-8 需要在 `backend` 目录下运行
+- Celery Worker 和 Beat 需要在单独的终端窗口中运行
+- 确保 Redis 服务已启动
 
 ### 前端单独启动
 

@@ -2,6 +2,8 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import ProjectViewSet, ProjectStageViewSet, ProjectModelConfigViewSet
+from .views_workflow import WorkflowViewSet
+from .views_advanced import AdvancedServiceViewSet
 from .sse_views import (
     ProjectStageSSEView,
     ProjectAllStagesSSEView,
@@ -12,6 +14,8 @@ router = DefaultRouter()
 router.register(r'projects', ProjectViewSet, basename='project')
 router.register(r'stages', ProjectStageViewSet, basename='stage')
 router.register(r'model-configs', ProjectModelConfigViewSet, basename='model-config')
+router.register(r'workflows', WorkflowViewSet, basename='workflow')
+router.register(r'advanced', AdvancedServiceViewSet, basename='advanced-service')
 
 urlpatterns = [
     path('', include(router.urls)),

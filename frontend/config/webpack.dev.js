@@ -5,7 +5,7 @@ module.exports = merge(common, {
   mode: 'development',
   devtool: 'eval-source-map',
   devServer: {
-    port: 3000,
+    port: 3002,
     hot: true,
     open: true,
     historyApiFallback: true,
@@ -15,18 +15,19 @@ module.exports = merge(common, {
         warnings: false,
       },
     },
-    proxy: {
-      '/api': {
-        target: 'http://127.0.0.1:8010',
-        changeOrigin: true,
-        secure: false,
-        logLevel: 'debug',
-      },
-      '/media': {
+    proxy: [
+      {
+        context: ['/api'],
         target: 'http://127.0.0.1:8010',
         changeOrigin: true,
         secure: false,
       },
-    },
+      {
+        context: ['/media'],
+        target: 'http://127.0.0.1:8010',
+        changeOrigin: true,
+        secure: false,
+      },
+    ],
   },
 });

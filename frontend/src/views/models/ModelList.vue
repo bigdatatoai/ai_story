@@ -1,26 +1,25 @@
 <template>
   <div class="model-list">
-    <page-card title="模型管理">
-      <template slot="header-right">
-        <button class="btn btn-primary btn-sm gap-2" @click="handleCreate">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-4 w-4"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-          >
-            <path
-              fill-rule="evenodd"
-              d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"
-              clip-rule="evenodd"
-            />
+    <!-- 页面头部 - 现代化设计 -->
+    <div class="page-header">
+      <div class="header-content">
+        <div class="header-left">
+          <h1 class="page-title">模型管理</h1>
+          <p class="page-subtitle">管理您的AI模型配置</p>
+        </div>
+        <button class="create-button" @click="handleCreate">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 5v14M5 12h14"/>
           </svg>
-          添加模型
+          <span>添加模型</span>
         </button>
-      </template>
+      </div>
+    </div>
 
+    <!-- 内容区域 -->
+    <div class="content-wrapper">
       <!-- 筛选区域 -->
-      <div class="flex flex-wrap gap-3 mb-6">
+      <div class="filter-section">
         <div class="form-control">
           <div class="input-group">
             <input
@@ -213,19 +212,17 @@
           </table>
         </div>
       </loading-container>
-    </page-card>
+    </div>
   </div>
 </template>
 
 <script>
 import { mapState, mapActions } from 'vuex'
-import PageCard from '@/components/common/PageCard.vue'
 import LoadingContainer from '@/components/common/LoadingContainer.vue'
 
 export default {
   name: 'ModelList',
   components: {
-    PageCard,
     LoadingContainer
   },
   data() {

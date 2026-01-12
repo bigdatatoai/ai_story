@@ -549,3 +549,163 @@ def generate_jianying_draft(
 
     finally:
         pass
+
+
+@app.task(
+    bind=True,
+    max_retries=2,
+    default_retry_delay=60,
+    acks_late=True,
+    reject_on_worker_lost=True,
+    soft_time_limit=600,
+    time_limit=900
+)
+def export_project_video(
+    self,
+    project_id: str,
+    user_id: int,
+    include_subtitles: bool = True,
+    video_format: str = "mp4"
+) -> Dict[str, Any]:
+    """
+    导出项目完整视频任务
+    
+    Args:
+        self: Celery任务实例
+        project_id: 项目ID
+        user_id: 用户ID
+        include_subtitles: 是否包含字幕
+        video_format: 视频格式
+        
+    Returns:
+        Dict包含: success, video_path, error
+    """
+    from core.services.video_export_service import VideoExportService
+    from apps.content.models import Storyboard
+    
+    task_id = self.request.id
+    channel = f"ai_story:project:{project_id}:export"
+    
+    logger.info(f"开始导出项目视频, 项目: {project_id}, 任务ID: {task_id}")
+    
+    publisher = RedisStreamPublisher(project_id, 'export')
+    
+    try:
+        # 获取项目
+        project = Project.objects.get(id=project_id, user_id=user_id)
+        
+        # 检查项目状态
+        if project.status != 'completed':
+            raise ValueError('项目未完成，无法导出')
+        
+        # 发布开始消息
+        publisher.publish_stage_update(
+            status='processing',
+            progress=0,
+            message='开始导出视频'
+        )
+        
+        # 获取所有分镜及其视频
+        storyboards = Storyboard.objects.filter(
+            project=project
+        ).order_by('sequence_number').prefetch_related('videos')
+        
+        if not storyboards.exists():
+            raise ValueError('项目没有分镜数据')
+        
+        # 收集视频URL和字幕数据
+        video_urls = []
+        subtitle_data = []
+        current_time = 0.0
+        
+        for storyboard in storyboards:
+            # 获取该分镜的视频（取最新的成功生成的）
+            video = storyboard.videos.filter(status='completed').order_by('-created_at').first()
+            
+            if not video:
+                logger.warning(f"分镜 {storyboard.sequence_number} 没有可用视频，跳过")
+                continue
+            
+            video_urls.append(video.video_url)
+            
+            # 添加字幕数据
+            if include_subtitles and storyboard.narration_text:
+                duration = video.duration or 3.0
+                subtitle_data.append({
+                    'text': storyboard.narration_text,
+                    'start': current_time,
+                    'end': current_time + duration
+                })
+                current_time += duration
+        
+        if not video_urls:
+            raise ValueError('没有可用的视频片段')
+        
+        logger.info(f"找到 {len(video_urls)} 个视频片段")
+        
+        # 发布进度
+        publisher.publish_stage_update(
+            status='processing',
+            progress=0.3,
+            message=f'正在合并 {len(video_urls)} 个视频片段'
+        )
+        
+        # 创建导出服务
+        export_service = VideoExportService()
+        
+        # 合并视频
+        output_filename = f"{project.name}_{project.id}"
+        video_path = export_service.merge_videos(
+            video_urls=video_urls,
+            output_filename=output_filename,
+            include_subtitles=include_subtitles,
+            subtitle_data=subtitle_data if include_subtitles else None,
+            video_format=video_format
+        )
+        
+        # 发布完成消息
+        publisher.publish_done(
+            result=video_path,
+            metadata={
+                'video_count': len(video_urls),
+                'has_subtitles': include_subtitles,
+                'format': video_format
+            }
+        )
+        
+        logger.info(f"视频导出成功: {video_path}")
+        
+        return {
+            'success': True,
+            'task_id': task_id,
+            'channel': channel,
+            'video_path': video_path
+        }
+        
+    except Project.DoesNotExist:
+        error_msg = f'项目不存在: {project_id}'
+        logger.error(error_msg)
+        publisher.publish_error(error_msg)
+        return {'success': False, 'error': error_msg}
+        
+    except ValueError as e:
+        error_msg = str(e)
+        logger.error(f'参数错误: {error_msg}')
+        publisher.publish_error(error_msg)
+        return {'success': False, 'error': error_msg}
+        
+    except Exception as e:
+        error_msg = f'视频导出失败: {str(e)}'
+        logger.exception(error_msg)
+        
+        publisher.publish_error(error_msg, retry_count=self.request.retries)
+        
+        # 重试
+        if self.request.retries < self.max_retries:
+            logger.info(f"任务将在60秒后重试 (第{self.request.retries + 1}次)")
+            raise self.retry(exc=e, countdown=60)
+        
+        return {'success': False, 'error': error_msg}
+        
+    finally:
+        publisher.close()

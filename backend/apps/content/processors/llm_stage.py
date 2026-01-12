@@ -391,9 +391,11 @@ class LLMStageProcessor(StageProcessor):
                 providers = list(getattr(config, field_name).all())
 
                 if providers:
-                    # 简化版: 使用第一个提供商
-                    # TODO: 实现负载均衡策略
-                    provider = providers[0]
+                    # 使用负载均衡策略选择提供商
+                    from core.services.load_balancer import LoadBalancer
+                    load_balancer = LoadBalancer(strategy=config.load_balance_strategy)
+                    cache_key = f'lb:{project.id}:{self.stage_type}'
+                    provider = load_balancer.select_provider(providers, cache_key=cache_key)
 
         # 如果没有配置,尝试从提示词模板获取默认模型
         if not provider:

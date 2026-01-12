@@ -1,16 +1,25 @@
 <template>
   <div class="prompt-list">
-    <!-- 页面头部 -->
-    <PageCard title="提示词管理">
-      <template slot="header-right">
-        <button class="btn btn-primary btn-sm" @click="handleCreate">
-          +
-          创建提示词集
+    <!-- 页面头部 - 现代化设计 -->
+    <div class="page-header">
+      <div class="header-content">
+        <div class="header-left">
+          <h1 class="page-title">提示词管理</h1>
+          <p class="page-subtitle">管理您的AI提示词模板集合</p>
+        </div>
+        <button class="create-button" @click="handleCreate">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+          <span>创建提示词集</span>
         </button>
-      </template>
+      </div>
+    </div>
 
+    <!-- 内容区域 -->
+    <div class="content-wrapper">
       <!-- 搜索和过滤 -->
-      <div class="mb-6 flex gap-4">
+      <div class="filter-section">
         <div class="form-control flex-1">
           <input
             v-model="searchKeyword"
@@ -180,7 +189,7 @@
           </div>
         </div>
       </LoadingContainer>
-    </PageCard>
+    </div>
 
     <!-- 克隆对话框 -->
     <dialog ref="cloneDialog" class="modal">
@@ -211,7 +220,6 @@
 
 <script>
 import { mapState, mapActions } from 'vuex';
-import PageCard from '@/components/common/PageCard.vue';
 import StatusBadge from '@/components/common/StatusBadge.vue';
 import LoadingContainer from '@/components/common/LoadingContainer.vue';
 import { formatDate } from '@/utils/helpers';
@@ -219,7 +227,6 @@ import { formatDate } from '@/utils/helpers';
 export default {
   name: 'PromptList',
   components: {
-    PageCard,
     StatusBadge,
     LoadingContainer,
   },
@@ -377,6 +384,102 @@ export default {
 </script>
 
 <style scoped>
+.prompt-list {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* 页面头部 */
+.page-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 20px;
+  padding: 40px;
+  margin-bottom: 30px;
+  box-shadow: 0 10px 40px rgba(102, 126, 234, 0.3);
+  position: relative;
+  overflow: hidden;
+}
+
+.page-header::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  right: -10%;
+  width: 300px;
+  height: 300px;
+  background: radial-gradient(circle, rgba(255,255,255,0.2) 0%, transparent 70%);
+  border-radius: 50%;
+}
+
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative;
+  z-index: 1;
+}
+
+.header-left {
+  color: white;
+}
+
+.page-title {
+  font-size: 36px;
+  font-weight: 800;
+  margin-bottom: 8px;
+  letter-spacing: -0.5px;
+}
+
+.page-subtitle {
+  font-size: 16px;
+  opacity: 0.9;
+}
+
+.create-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 28px;
+  background: white;
+  color: #667eea;
+  border: none;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.create-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+}
+
+.create-button svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* 内容区域 */
+.content-wrapper {
+  background: white;
+  border-radius: 20px;
+  padding: 30px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* 筛选区域 */
+.filter-section {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 30px;
+}
+
+.filter-section .form-control {
+  min-width: 200px;
+}
+
 .line-clamp-2 {
   display: -webkit-box;
   -webkit-line-clamp: 2;

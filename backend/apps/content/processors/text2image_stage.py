@@ -371,9 +371,11 @@ class Text2ImageStageProcessor(StageProcessor):
             providers = list(config.image_providers.all())
 
             if providers:
-                # 简化版: 使用第一个提供商
-                # TODO: 实现负载均衡策略
-                return providers[0]
+                # 使用负载均衡策略选择提供商
+                from core.services.load_balancer import LoadBalancer
+                load_balancer = LoadBalancer(strategy=config.load_balance_strategy)
+                cache_key = f'lb:{project.id}:image_generation'
+                return load_balancer.select_provider(providers, cache_key=cache_key)
 
         # 2. 获取系统默认提供商
         provider = ModelProvider.objects.filter(
