@@ -31,9 +31,4 @@ export default {
   getUsageLogs(params) {
     return apiClient.get('/models/usage-logs/', { params });
   },
-
-  // 获取使用统计
-  getUsageStats(params) {
-    return apiClient.get('/models/usage-stats/', { params });
-  },
 };

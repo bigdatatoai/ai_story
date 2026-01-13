@@ -6,10 +6,12 @@ API速率限制中间件
 import time
 import hashlib
 import logging
+import functools
 from typing import Optional, Callable
 from django.core.cache import cache
 from django.http import JsonResponse
 from django.conf import settings
+from core.utils.response_wrapper import APIResponse, ErrorCode
 
 logger = logging.getLogger('ai_story.api')
 
@@ -36,14 +38,11 @@ class RateLimitMiddleware:
         rate_limit_result = self.check_rate_limit(request)
         
         if not rate_limit_result['allowed']:
-            return JsonResponse({
-                'success': False,
-                'error': '请求过于频繁，请稍后再试',
-                'error_code': 'RATE_LIMIT_EXCEEDED',
-                'retry_after': rate_limit_result['retry_after'],
-                'limit': rate_limit_result['limit'],
-                'remaining': 0,
-            }, status=429)
+            return APIResponse.rate_limited(
+                retry_after=rate_limit_result['retry_after'],
+                limit=rate_limit_result['limit'],
+                remaining=0
+            )
         
         # 继续处理请求
         response = self.get_response(request)
@@ -177,7 +176,8 @@ class RequestIdempotencyMiddleware:
         
         if cached_response:
             logger.info(f"返回缓存的幂等性响应: {idempotency_key}")
-            return JsonResponse(cached_response)
+            from rest_framework.response import Response
+            return Response(cached_response)
         
         # 处理请求
         response = self.get_response(request)
@@ -213,6 +213,7 @@ def rate_limit_decorator(
             pass
     """
     def decorator(func):
+        @functools.wraps(func)
         def wrapper(request, *args, **kwargs):
             # 生成限制键
             if key_func:
@@ -232,12 +233,7 @@ def rate_limit_decorator(
             
             if current_count >= requests:
                 ttl = cache.ttl(limit_key) or window
-                return JsonResponse({
-                    'success': False,
-                    'error': '请求过于频繁，请稍后再试',
-                    'error_code': 'RATE_LIMIT_EXCEEDED',
-                    'retry_after': ttl,
-                }, status=429)
+                return APIResponse.rate_limited(retry_after=ttl)
             
             # 增加计数
             if current_count == 0:
@@ -275,11 +271,11 @@ class RequestDeduplicationMiddleware:
         dedup_key = f"request_dedup:{fingerprint}"
         if cache.get(dedup_key):
             logger.warning(f"检测到重复请求: {fingerprint}")
-            return JsonResponse({
-                'success': False,
-                'error': '检测到重复请求，请勿重复提交',
-                'error_code': 'DUPLICATE_REQUEST',
-            }, status=409)
+            return APIResponse.error(
+                message='检测到重复请求，请勿重复提交',
+                code=ErrorCode.DUPLICATE_REQUEST,
+                http_status=409
+            )
         
         # 标记请求
         cache.set(dedup_key, True, self.dedup_window)

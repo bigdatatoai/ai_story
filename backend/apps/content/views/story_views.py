@@ -76,68 +76,58 @@ class StoryViewSet(viewsets.ModelViewSet):
     
     def list(self, request, *args, **kwargs):
         """重写list方法，返回统一格式"""
+        from core.utils.response_wrapper import APIResponse
+        
         queryset = self.filter_queryset(self.get_queryset())
         page = self.paginate_queryset(queryset)
+        
         if page is not None:
             serializer = self.get_serializer(page, many=True)
-            return Response({
-                'success': True,
-                'data': {
-                    'results': serializer.data,
-                    'count': self.paginator.page.paginator.count,
-                    'next': self.paginator.get_next_link(),
-                    'previous': self.paginator.get_previous_link()
-                }
-            })
+            return APIResponse.paginated(
+                results=serializer.data,
+                count=self.paginator.page.paginator.count,
+                next_url=self.paginator.get_next_link(),
+                previous_url=self.paginator.get_previous_link()
+            )
         
         serializer = self.get_serializer(queryset, many=True)
-        return Response({
-            'success': True,
-            'data': serializer.data
-        })
+        return APIResponse.success(data=serializer.data)
     
     def create(self, request, *args, **kwargs):
         """重写create方法，返回统一格式"""
+        from core.utils.response_wrapper import APIResponse
+        
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
-        headers = self.get_success_headers(serializer.data)
-        return Response({
-            'success': True,
-            'message': '创建成功',
-            'data': serializer.data
-        }, status=status.HTTP_201_CREATED, headers=headers)
+        return APIResponse.created(data=serializer.data, message='创建成功')
     
     def retrieve(self, request, *args, **kwargs):
         """重写retrieve方法，返回统一格式"""
+        from core.utils.response_wrapper import APIResponse
+        
         instance = self.get_object()
         serializer = self.get_serializer(instance)
-        return Response({
-            'success': True,
-            'data': serializer.data
-        })
+        return APIResponse.success(data=serializer.data)
     
     def update(self, request, *args, **kwargs):
         """重写update方法，返回统一格式"""
+        from core.utils.response_wrapper import APIResponse
+        
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
-        return Response({
-            'success': True,
-            'message': '更新成功',
-            'data': serializer.data
-        })
+        return APIResponse.updated(data=serializer.data, message='更新成功')
     
     def destroy(self, request, *args, **kwargs):
         """重写destroy方法，返回统一格式"""
+        from core.utils.response_wrapper import APIResponse
+        
         instance = self.get_object()
         self.perform_destroy(instance)
-        return Response({
-            'success': True,
-            'message': '删除成功'
-        }, status=status.HTTP_200_OK)
+        return APIResponse.deleted(message='删除成功')
     
     @action(detail=False, methods=['post'])
     @rate_limit_decorator(requests=10, window=60)
@@ -268,21 +258,21 @@ class StoryViewSet(viewsets.ModelViewSet):
                 story.characters.set(characters)
             
             # 返回结果
+            from core.utils.response_wrapper import APIResponse, ErrorCode
             serializer = StorySerializer(story)
             
-            return Response({
-                'success': True,
-                'message': '故事生成成功',
-                'data': serializer.data,
-            }, status=status.HTTP_201_CREATED)
+            return APIResponse.created(
+                data=serializer.data,
+                message='故事生成成功'
+            )
         
         except Exception as e:
+            from core.utils.response_wrapper import APIResponse, ErrorCode
             logger.error(f"故事生成失败: {str(e)}", exc_info=True)
-            return Response({
-                'success': False,
-                'error': f'故事生成失败: {str(e)}',
-                'error_code': 'GENERATION_FAILED',
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return APIResponse.server_error(
+                message=f'故事生成失败: {str(e)}',
+                code=ErrorCode.STORY_GENERATION_FAILED
+            )
     
     @action(detail=True, methods=['post'])
     def continue_story(self, request, pk=None):

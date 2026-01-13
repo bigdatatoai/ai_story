@@ -301,6 +301,17 @@ export default {
   beforeDestroy() {
     this.disconnectWebSocket();
   },
+  deactivated() {
+    this.disconnectWebSocket();
+  },
+  watch: {
+    $route(to, from) {
+      const projectId = this.$route.params.id;
+      if (!to.path.includes(`/projects/${projectId}`)) {
+        this.disconnectWebSocket();
+      }
+    },
+  },
   methods: {
     ...mapActions('projects', ['fetchProject', 'fetchProjectStages', 'executeStage', 'updateProject', 'updateStageData']),
     formatDate,

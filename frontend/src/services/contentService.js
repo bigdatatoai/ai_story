@@ -3,7 +3,7 @@ import apiClient from './apiClient';
 export default {
   // 获取文案改写结果
   getRewrite(projectId) {
-    return apiClient.get(`/content/rewrites/${projectId}/`);
+    return apiClient.get(`/content/content-rewrites/${projectId}/`);
   },
 
   // 获取分镜列表
@@ -20,7 +20,7 @@ export default {
 
   // 获取生成的图片
   getGeneratedImages(storyboardId) {
-    return apiClient.get(`/content/generated-images/`, {
+    return apiClient.get(`/content/images/`, {
       params: { storyboard_id: storyboardId },
     });
   },
@@ -32,7 +32,7 @@ export default {
 
   // 获取生成的视频
   getGeneratedVideos(storyboardId) {
-    return apiClient.get(`/content/generated-videos/`, {
+    return apiClient.get(`/content/videos-generated/`, {
       params: { storyboard_id: storyboardId },
     });
   },

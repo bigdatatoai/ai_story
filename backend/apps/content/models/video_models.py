@@ -24,6 +24,9 @@ class Video(models.Model):
         ('image_to_video', '图片转视频'),
         ('storyboard_to_video', '故事板转视频'),
         ('story_to_video', '故事转视频'),
+        ('drama', '短剧制作'),
+        ('anime', '动漫制作'),
+        ('comic', '漫画制作'),
     ]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

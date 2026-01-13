@@ -5,9 +5,11 @@
 """
 
 import json
+import logging
 
 from celery.result import AsyncResult
 from django.conf import settings
+from django.db import transaction, DatabaseError
 from django.http import StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -17,6 +19,17 @@ from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+
+from .constants import ProjectStatus, StageStatus, StageType, ErrorCode, ErrorMessage
+from .exceptions import (
+    ProjectNotResumableException,
+    ProjectNotPausableException,
+    StageNotFoundException,
+    TaskStartFailedException,
+    DatabaseException,
+)
+
+logger = logging.getLogger(__name__)
 
 from .models import Project, ProjectModelConfig, ProjectStage
 from .serializers import (
@@ -139,9 +152,9 @@ class ProjectViewSet(viewsets.ModelViewSet):
         stage = get_object_or_404(ProjectStage, project=project, stage_type=stage_name)
 
         # 更新项目状态为处理中
-        if project.status != "processing":
-            project.status = "processing"
-            project.save()
+        if project.status != ProjectStatus.PROCESSING:
+            project.status = ProjectStatus.PROCESSING
+            project.save(update_fields=['status', 'updated_at'])
 
         # 模式1: SSE流式输出 (旧方式，作为fallback)
         if use_streaming:
@@ -160,40 +173,31 @@ class ProjectViewSet(viewsets.ModelViewSet):
             execute_text2image_stage,
         )
 
-        # 根据阶段类型启动对应的Celery任务
-        if stage_name in ["rewrite", "storyboard", "camera_movement"]:
-            # LLM类阶段
-            print("execute_llm_stage", settings.CELERY_BROKER_URL, execute_llm_stage.app.conf.broker_url)
-            task = execute_llm_stage.delay(
-                project_id=str(project.id),
+        # 获取阶段对象
+        stage = get_object_or_404(ProjectStage, project=project, stage_type=stage_name)
+
+        # 使用统一的任务启动方法
+        try:
+            task = self._start_stage_task(
                 stage_name=stage_name,
+                project_id=str(project.id),
                 input_data=input_data,
-                user_id=self.request.user.id,
+                user_id=self.request.user.id
             )
-        elif stage_name == "image_generation":
-            # 文生图阶段
-            storyboard_ids = input_data.get("storyboard_ids", None)
-            task = execute_text2image_stage.delay(
-                project_id=str(project.id),
-                storyboard_ids=storyboard_ids,
-                user_id=self.request.user.id,
-            )
-        elif stage_name == "video_generation":
-            # 图生视频阶段
-            storyboard_ids = input_data.get("storyboard_ids", None)
-            task = execute_image2video_stage.delay(
-                project_id=str(project.id),
-                storyboard_ids=storyboard_ids,
-                user_id=self.request.user.id,
-            )
-        else:
+        except TaskStartFailedException as e:
             return Response(
-                {"error": f"未知阶段类型: {stage_name}"},
-                status=status.HTTP_400_BAD_REQUEST,
+                {"error": str(e.detail.get('error', '任务启动失败')), "code": e.detail.get('code')},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+        # 保存task_id到阶段记录，用于后续追踪和取消
+        stage.task_id = task.id
+        stage.save(update_fields=['task_id'])
 
         # 构建Redis频道名称
         channel = f"ai_story:project:{project.id}:stage:{stage_name}"
+
+        logger.info(f"阶段 {stage_name} 任务已启动，task_id: {task.id}")
 
         return Response(
             {
@@ -385,82 +389,357 @@ class ProjectViewSet(viewsets.ModelViewSet):
         Body: {"stage_name": "rewrite"}
         """
         project = self.get_object()
-        serializer = StageRetrySerializer(
-            data=request.data, context={"project_id": str(project.id)}
-        )
-        serializer.is_valid(raise_exception=True)
+        
+        try:
+            serializer = StageRetrySerializer(
+                data=request.data, context={"project_id": str(project.id)}
+            )
+            serializer.is_valid(raise_exception=True)
 
-        stage_name = serializer.validated_data["stage_name"]
-        stage = get_object_or_404(ProjectStage, project=project, stage_type=stage_name)
+            stage_name = serializer.validated_data["stage_name"]
+            stage = get_object_or_404(ProjectStage, project=project, stage_type=stage_name)
 
-        # 增加重试次数
-        stage.retry_count += 1
-        stage.status = "processing"
-        stage.error_message = ""
-        stage.started_at = timezone.now()
-        stage.save()
+            with transaction.atomic():
+                # 增加重试次数
+                stage.retry_count += 1
+                stage.status = StageStatus.PROCESSING
+                stage.error_message = ""
+                stage.started_at = timezone.now()
+                stage.save(update_fields=['retry_count', 'status', 'error_message', 'started_at'])
 
-        # TODO: 调用Celery任务
-        # from apps.content.tasks import execute_project_stage
-        # execute_project_stage.delay(str(project.id), stage_name)
+                # 启动Celery任务重试
+                input_data = stage.input_data or {}
 
-        return Response(
-            {
-                "message": f"阶段 {stage.get_stage_type_display()} 开始重试 (第{stage.retry_count}次)",
-                "stage": ProjectStageSerializer(stage).data,
-            }
-        )
+                # 使用统一的任务启动方法
+                task = self._start_stage_task(
+                    stage_name=stage_name,
+                    project_id=str(project.id),
+                    input_data=input_data,
+                    user_id=self.request.user.id
+                )
+
+                # 保存task_id到阶段记录
+                stage.task_id = task.id
+                stage.save(update_fields=['task_id'])
+
+                logger.info(
+                    f"阶段 {stage_name} 开始重试 (第{stage.retry_count}次)，任务ID: {task.id}"
+                )
+
+                return Response(
+                    {
+                        "code": 200,
+                        "msg": f"阶段 {stage.get_stage_type_display()} 开始重试 (第{stage.retry_count}次)",
+                        "data": {
+                            "stage": ProjectStageSerializer(stage).data,
+                            "task_id": task.id,
+                            "channel": f"ai_story:project:{project.id}:stage:{stage_name}",
+                        }
+                    }
+                )
+        except TaskStartFailedException as e:
+            logger.error(f"重试阶段失败 - 任务启动失败: {str(e)}", exc_info=True)
+            return Response(
+                {
+                    "code": ErrorCode.TASK_START_FAILED,
+                    "msg": "阶段重试失败，任务启动失败",
+                    "data": {"error_detail": str(e)}
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        except DatabaseError as e:
+            logger.error(f"重试阶段失败 - 数据库错误: {str(e)}", exc_info=True)
+            raise DatabaseException(error=str(e))
+        except Exception as e:
+            logger.error(f"重试阶段失败 - 系统错误: {str(e)}", exc_info=True)
+            return Response(
+                {
+                    "code": ErrorCode.SYSTEM_ERROR,
+                    "msg": "阶段重试失败，请稍后重试",
+                    "data": {"error_detail": str(e)}
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
     @action(detail=True, methods=["post"])
     def pause(self, request, pk=None):
         """
         暂停项目
         POST /api/v1/projects/{id}/pause/
+        
+        功能:
+        1. 验证项目状态（只有processing状态可暂停）
+        2. 取消所有正在运行的Celery任务
+        3. 更新项目状态为paused
+        4. 使用事务保证数据一致性
+        
+        返回:
+        {
+            "code": 200,
+            "msg": "项目已暂停",
+            "data": {
+                "project": {...},
+                "cancelled_tasks": [{"stage": "rewrite", "task_id": "xxx"}]
+            }
+        }
         """
         project = self.get_object()
 
-        if project.status != "processing":
+        # 状态校验：只有processing状态可暂停
+        if project.status not in ProjectStatus.PAUSABLE_STATUSES:
+            raise ProjectNotPausableException()
+
+        try:
+            with transaction.atomic():
+                # 更新项目状态
+                project.status = ProjectStatus.PAUSED
+                project.save(update_fields=['status', 'updated_at'])
+
+                # 取消正在运行的Celery任务
+                cancelled_tasks = []
+                running_stages = project.stages.filter(
+                    status=StageStatus.PROCESSING,
+                    task_id__isnull=False
+                ).exclude(task_id='')
+                
+                for stage in running_stages:
+                    try:
+                        AsyncResult(stage.task_id).revoke(terminate=True)
+                        cancelled_tasks.append({
+                            'stage': stage.stage_type,
+                            'stage_display': stage.get_stage_type_display(),
+                            'task_id': stage.task_id
+                        })
+                        logger.info(f"已取消阶段 {stage.stage_type} 的任务: {stage.task_id}")
+                    except Exception as e:
+                        logger.warning(f"取消任务 {stage.task_id} 失败: {str(e)}")
+
+                logger.info(f"项目 {project.id} 已暂停，取消了 {len(cancelled_tasks)} 个任务")
+
+                return Response(
+                    {
+                        "code": ErrorCode.PROJECT_INVALID_STATUS if not cancelled_tasks else 200,
+                        "msg": "项目已暂停",
+                        "data": {
+                            "project": ProjectDetailSerializer(project).data,
+                            "cancelled_tasks": cancelled_tasks,
+                            "cancelled_count": len(cancelled_tasks),
+                        }
+                    }
+                )
+        except DatabaseError as e:
+            logger.error(f"暂停项目失败 - 数据库错误: {str(e)}", exc_info=True)
+            raise DatabaseException(error=str(e))
+        except Exception as e:
+            logger.error(f"暂停项目失败 - 系统错误: {str(e)}", exc_info=True)
             return Response(
-                {"error": "只有处理中的项目才能暂停"},
-                status=status.HTTP_400_BAD_REQUEST,
+                {
+                    "code": ErrorCode.SYSTEM_ERROR,
+                    "msg": "项目暂停失败，请稍后重试",
+                    "data": {"error_detail": str(e)}
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-
-        project.status = "paused"
-        project.save()
-
-        # TODO: 取消Celery任务
-
-        return Response(
-            {
-                "message": "项目已暂停",
-                "project": ProjectDetailSerializer(project).data,
-            }
-        )
 
     @action(detail=True, methods=["post"])
     def resume(self, request, pk=None):
         """
         恢复暂停的项目
         POST /api/v1/projects/{id}/resume/
+        
+        功能:
+        1. 严格验证项目状态（只有paused状态可恢复）
+        2. 查找当前需要执行的阶段（第一个pending或failed的阶段）
+        3. 启动对应的Celery任务继续执行Pipeline
+        4. 使用事务保证数据一致性
+        5. 支持幂等性（重复调用不会重复启动任务）
+        
+        返回:
+        {
+            "code": 200,
+            "msg": "项目已恢复，从阶段 文案改写 继续执行",
+            "data": {
+                "project": {...},
+                "task_id": "celery-task-id",
+                "channel": "ai_story:project:xxx:stage:rewrite",
+                "current_stage": "rewrite",
+                "current_stage_display": "文案改写"
+            }
+        }
+        
+        错误码:
+        - 1003: 项目状态不是paused，无法恢复
+        - 2005: 没有可恢复的阶段（所有阶段已完成）
+        - 3001: 任务启动失败
+        - 5001: 数据库错误
         """
         project = self.get_object()
 
-        if project.status != "paused":
+        # 状态校验：只有paused状态可恢复
+        if project.status not in ProjectStatus.RESUMABLE_STATUSES:
+            raise ProjectNotResumableException()
+
+        try:
+            with transaction.atomic():
+                # 查找当前需要执行的阶段（第一个未完成的阶段）
+                current_stage = project.stages.filter(
+                    status__in=StageStatus.RESUMABLE_STATUSES
+                ).order_by("created_at").first()
+
+                if not current_stage:
+                    # 所有阶段都已完成
+                    project.status = ProjectStatus.COMPLETED
+                    project.completed_at = timezone.now()
+                    project.save(update_fields=['status', 'completed_at', 'updated_at'])
+                    
+                    logger.info(f"项目 {project.id} 所有阶段已完成")
+                    
+                    return Response(
+                        {
+                            "code": 200,
+                            "msg": ErrorMessage.PROJECT_ALREADY_COMPLETED,
+                            "data": {
+                                "project": ProjectDetailSerializer(project).data,
+                                "all_stages_completed": True,
+                            }
+                        }
+                    )
+
+                # 幂等性检查：如果阶段已经在处理中，直接返回当前状态
+                if current_stage.status == StageStatus.PROCESSING and current_stage.task_id:
+                    logger.warning(
+                        f"项目 {project.id} 阶段 {current_stage.stage_type} 已在处理中，任务ID: {current_stage.task_id}"
+                    )
+                    return Response(
+                        {
+                            "code": 200,
+                            "msg": f"项目已在处理中，当前阶段: {current_stage.get_stage_type_display()}",
+                            "data": {
+                                "project": ProjectDetailSerializer(project).data,
+                                "task_id": current_stage.task_id,
+                                "channel": f"ai_story:project:{project.id}:stage:{current_stage.stage_type}",
+                                "current_stage": current_stage.stage_type,
+                                "current_stage_display": current_stage.get_stage_type_display(),
+                                "already_running": True,
+                            }
+                        }
+                    )
+
+                # 更新项目状态为processing
+                project.status = ProjectStatus.PROCESSING
+                project.save(update_fields=['status', 'updated_at'])
+
+                # 重新启动Pipeline - 从当前阶段继续
+                stage_name = current_stage.stage_type
+                input_data = current_stage.input_data or {}
+
+                # 启动对应的Celery任务
+                task = self._start_stage_task(
+                    stage_name=stage_name,
+                    project_id=str(project.id),
+                    input_data=input_data,
+                    user_id=self.request.user.id
+                )
+
+                # 更新阶段状态并保存task_id
+                current_stage.status = StageStatus.PROCESSING
+                current_stage.started_at = timezone.now()
+                current_stage.task_id = task.id
+                current_stage.error_message = ""  # 清空之前的错误信息
+                current_stage.save(update_fields=['status', 'started_at', 'task_id', 'error_message'])
+
+                channel = f"ai_story:project:{project.id}:stage:{stage_name}"
+
+                logger.info(
+                    f"项目 {project.id} 已恢复，从阶段 {stage_name} 继续执行，任务ID: {task.id}"
+                )
+
+                return Response(
+                    {
+                        "code": 200,
+                        "msg": f"项目已恢复，从阶段 {current_stage.get_stage_type_display()} 继续执行",
+                        "data": {
+                            "project": ProjectDetailSerializer(project).data,
+                            "task_id": task.id,
+                            "channel": channel,
+                            "current_stage": stage_name,
+                            "current_stage_display": current_stage.get_stage_type_display(),
+                            "resumed_at": timezone.now().isoformat(),
+                        }
+                    }
+                )
+
+        except DatabaseError as e:
+            logger.error(f"恢复项目失败 - 数据库错误: {str(e)}", exc_info=True)
+            raise DatabaseException(error=str(e))
+        except TaskStartFailedException:
+            raise
+        except Exception as e:
+            logger.error(f"恢复项目失败 - 系统错误: {str(e)}", exc_info=True)
             return Response(
-                {"error": "只有暂停的项目才能恢复"}, status=status.HTTP_400_BAD_REQUEST
+                {
+                    "code": ErrorCode.SYSTEM_ERROR,
+                    "msg": "项目恢复失败，请稍后重试",
+                    "data": {"error_detail": str(e)}
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-        project.status = "processing"
-        project.save()
+    def _start_stage_task(self, stage_name: str, project_id: str, input_data: dict, user_id: int):
+        """
+        启动阶段任务的辅助方法
+        
+        Args:
+            stage_name: 阶段名称
+            project_id: 项目ID
+            input_data: 输入数据
+            user_id: 用户ID
+            
+        Returns:
+            Celery AsyncResult对象
+            
+        Raises:
+            TaskStartFailedException: 任务启动失败
+        """
+        try:
+            from apps.projects.tasks import (
+                execute_image2video_stage,
+                execute_llm_stage,
+                execute_text2image_stage,
+            )
 
-        # TODO: 重新启动Pipeline (从当前阶段继续)
+            # 根据阶段类型启动对应的Celery任务
+            if stage_name in StageType.LLM_STAGES:
+                task = execute_llm_stage.delay(
+                    project_id=project_id,
+                    stage_name=stage_name,
+                    input_data=input_data,
+                    user_id=user_id,
+                )
+            elif stage_name == StageType.IMAGE_GENERATION:
+                storyboard_ids = input_data.get("storyboard_ids", None)
+                task = execute_text2image_stage.delay(
+                    project_id=project_id,
+                    storyboard_ids=storyboard_ids,
+                    user_id=user_id,
+                )
+            elif stage_name == StageType.VIDEO_GENERATION:
+                storyboard_ids = input_data.get("storyboard_ids", None)
+                task = execute_image2video_stage.delay(
+                    project_id=project_id,
+                    storyboard_ids=storyboard_ids,
+                    user_id=user_id,
+                )
+            else:
+                raise TaskStartFailedException(
+                    error=ErrorMessage.STAGE_UNKNOWN_TYPE.format(stage_name=stage_name)
+                )
 
-        return Response(
-            {
-                "message": "项目已恢复",
-                "project": ProjectDetailSerializer(project).data,
-            }
-        )
+            return task
+
+        except Exception as e:
+            logger.error(f"启动阶段 {stage_name} 任务失败: {str(e)}", exc_info=True)
+            raise TaskStartFailedException(error=str(e))
 
     @action(detail=True, methods=["post"])
     def rollback_stage(self, request, pk=None):
@@ -492,7 +771,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
         # 重置当前及后续阶段
         for stage_type in stage_order[current_index:]:
             ProjectStage.objects.filter(project=project, stage_type=stage_type).update(
-                status="pending",
+                status=StageStatus.PENDING,
                 output_data={},
                 error_message="",
                 retry_count=0,
@@ -501,8 +780,8 @@ class ProjectViewSet(viewsets.ModelViewSet):
             )
 
         # 更新项目状态
-        project.status = "draft"
-        project.save()
+        project.status = ProjectStatus.DRAFT
+        project.save(update_fields=['status', 'updated_at'])
 
         return Response(
             {
@@ -596,9 +875,13 @@ class ProjectViewSet(viewsets.ModelViewSet):
         
         project = self.get_object()
 
-        if project.status != "completed":
+        if project.status != ProjectStatus.COMPLETED:
             return Response(
-                {"error": "只有完成的项目才能导出"}, status=status.HTTP_400_BAD_REQUEST
+                {
+                    "error": ErrorMessage.PROJECT_ONLY_COMPLETED_CAN_EXPORT,
+                    "code": ErrorCode.PROJECT_NOT_EXPORTABLE
+                },
+                status=status.HTTP_400_BAD_REQUEST
             )
 
         include_subtitles = request.data.get("include_subtitles", True)

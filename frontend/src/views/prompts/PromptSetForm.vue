@@ -156,6 +156,8 @@ export default {
       formSuccess: '',
       loading: false,
       submitting: false,
+      abortController: null,
+      submitTimer: null,
     };
   },
   computed: {
@@ -181,12 +183,42 @@ export default {
       await this.loadPromptSet();
     }
   },
+  beforeDestroy() {
+    if (this.abortController) {
+      this.abortController.abort();
+    }
+    if (this.submitTimer) {
+      clearTimeout(this.submitTimer);
+    }
+  },
+  watch: {
+    $route(to, from) {
+      if (to.path !== from.path) {
+        this.resetForm();
+        if (this.isEdit) {
+          this.loadPromptSet();
+        }
+      }
+    },
+  },
   methods: {
     ...mapActions('prompts', [
       'fetchPromptSetDetail',
       'createPromptSet',
       'updatePromptSet',
     ]),
+
+    resetForm() {
+      this.formData = {
+        name: '',
+        description: '',
+        is_active: true,
+        is_default: false,
+      };
+      this.errors = {};
+      this.formError = '';
+      this.formSuccess = '';
+    },
 
     async loadPromptSet() {
       this.loading = true;
@@ -243,51 +275,72 @@ export default {
       this.formError = '';
       this.formSuccess = '';
 
+      if (this.abortController) {
+        this.abortController.abort();
+      }
+      this.abortController = new AbortController();
+
       try {
+        const submitData = {
+          ...this.formData,
+          is_admin_operation: this.isAdmin,
+        };
+
         if (this.isEdit) {
           // 更新提示词集
           await this.updatePromptSet({
             id: this.$route.params.id,
-            data: this.formData,
+            data: submitData,
           });
           this.formSuccess = '提示词集更新成功!';
 
-          // 延迟跳转
-          setTimeout(() => {
+          if (this.submitTimer) clearTimeout(this.submitTimer);
+          this.submitTimer = setTimeout(() => {
             this.$router.push(`/prompts/sets/${this.$route.params.id}`);
           }, 1000);
         } else {
           // 创建提示词集
-          const newSet = await this.createPromptSet(this.formData);
+          const newSet = await this.createPromptSet(submitData);
           this.formSuccess = '提示词集创建成功!';
 
-          // 延迟跳转到详情页
-          setTimeout(() => {
+          if (this.submitTimer) clearTimeout(this.submitTimer);
+          this.submitTimer = setTimeout(() => {
             this.$router.push(`/prompts/sets/${newSet.id}`);
           }, 1000);
         }
       } catch (error) {
-        console.error('提交表单失败:', error);
+        if (error.name === 'AbortError') {
+          return;
+        }
 
-        // 处理后端返回的错误
-        if (error.response && error.response.data) {
-          const errorData = error.response.data;
+        if (process.env.NODE_ENV === 'development') {
+          console.debug('提交表单失败详情:', error);
+        } else {
+          console.error('提交表单失败:', error.message);
+        }
 
-          // 字段级错误
-          if (typeof errorData === 'object') {
-            Object.keys(errorData).forEach((key) => {
+        if (error.response) {
+          const { status, data } = error.response;
+
+          if (status === 403) {
+            this.formError = '无权限执行此操作，请联系管理员';
+            return;
+          }
+
+          if (data && typeof data === 'object') {
+            Object.keys(data).forEach((key) => {
               if (key in this.formData) {
-                this.errors[key] = Array.isArray(errorData[key])
-                  ? errorData[key][0]
-                  : errorData[key];
+                this.errors[key] = Array.isArray(data[key])
+                  ? data[key][0]
+                  : data[key];
               } else {
-                this.formError = Array.isArray(errorData[key])
-                  ? errorData[key][0]
-                  : errorData[key];
+                this.formError = Array.isArray(data[key])
+                  ? data[key][0]
+                  : data[key];
               }
             });
           } else {
-            this.formError = errorData.detail || '提交失败,请重试';
+            this.formError = data?.detail || data?.message || '提交失败,请重试';
           }
         } else {
           this.formError = this.isEdit ? '更新提示词集失败,请重试' : '创建提示词集失败,请重试';

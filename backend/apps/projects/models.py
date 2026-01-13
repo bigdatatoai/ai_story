@@ -110,6 +110,9 @@ class ProjectStage(models.Model):
     max_retries = models.IntegerField('最大重试次数', default=3)
     error_message = models.TextField('错误信息', blank=True)
 
+    # Celery任务追踪
+    task_id = models.CharField('Celery任务ID', max_length=255, blank=True, default='', db_index=True)
+
     # 时间戳
     started_at = models.DateTimeField('开始时间', null=True, blank=True)
     completed_at = models.DateTimeField('完成时间', null=True, blank=True)

@@ -48,11 +48,11 @@
     </div>
 
     <div v-if="generatedStory" class="story-result">
-      <h2>{{ generatedStory.title }}</h2>
-      <div class="story-content">{{ generatedStory.content }}</div>
+      <h2>{{ generatedStory.title || '未命名故事' }}</h2>
+      <div class="story-content">{{ generatedStory.content || '' }}</div>
       <div class="story-actions">
-        <button @click="copyStory">📋 复制</button>
-        <button @click="downloadStory">💾 下载</button>
+        <button @click="copyStory" :disabled="!generatedStory.content">📋 复制</button>
+        <button @click="downloadStory" :disabled="!generatedStory.content">💾 下载</button>
       </div>
     </div>
 
@@ -90,23 +90,37 @@ export default {
       this.errorMessage = ''
       
       try {
-        const response = await storyAPI.generateStory({
+        // apiClient 已自动提取 response.data，所以这里直接是后端返回的数据
+        const data = await storyAPI.generateStory({
           topic: this.topic,
           age_group: this.ageGroup,
           genre: this.genre,
           word_count: 800
         })
         
-        if (response.success) {
-          this.generatedStory = response.data
-          this.successMessage = '故事生成成功！'
+        // 后端返回格式: { success: true, data: {...}, message: '...' }
+        if (data.success) {
+          this.generatedStory = data.data
+          this.successMessage = data.message || '故事生成成功！'
           setTimeout(() => { this.successMessage = '' }, 3000)
         } else {
-          throw new Error(response.error || '生成失败')
+          // 处理业务错误（success: false）
+          throw new Error(data.error || data.message || '生成失败')
         }
       } catch (error) {
         console.error('生成故事失败:', error)
-        this.errorMessage = error.response?.data?.error || error.message || '生成失败，请检查网络连接或稍后重试'
+        // 优化错误消息提取逻辑
+        let errorMsg = '生成失败，请稍后重试'
+        
+        if (error.response?.data) {
+          // HTTP错误响应
+          errorMsg = error.response.data.error || error.response.data.message || errorMsg
+        } else if (error.message) {
+          // 业务错误或网络错误
+          errorMsg = error.message
+        }
+        
+        this.errorMessage = errorMsg
         setTimeout(() => { this.errorMessage = '' }, 5000)
       } finally {
         this.isGenerating = false
@@ -114,30 +128,43 @@ export default {
     },
     
     copyStory() {
-      if (this.generatedStory) {
+      if (this.generatedStory && this.generatedStory.content) {
         navigator.clipboard.writeText(this.generatedStory.content)
           .then(() => {
             this.successMessage = '已复制到剪贴板'
             setTimeout(() => { this.successMessage = '' }, 2000)
           })
-          .catch(() => {
-            this.errorMessage = '复制失败'
+          .catch((err) => {
+            console.error('复制失败:', err)
+            this.errorMessage = '复制失败，请手动复制'
             setTimeout(() => { this.errorMessage = '' }, 2000)
           })
+      } else {
+        this.errorMessage = '没有可复制的内容'
+        setTimeout(() => { this.errorMessage = '' }, 2000)
       }
     },
     
     downloadStory() {
-      if (this.generatedStory) {
-        const blob = new Blob([this.generatedStory.content], { type: 'text/plain;charset=utf-8' })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `${this.generatedStory.title || this.topic}.txt`
-        a.click()
-        URL.revokeObjectURL(url)
-        this.successMessage = '下载成功'
-        setTimeout(() => { this.successMessage = '' }, 2000)
+      if (this.generatedStory && this.generatedStory.content) {
+        try {
+          const blob = new Blob([this.generatedStory.content], { type: 'text/plain;charset=utf-8' })
+          const url = URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url
+          a.download = `${this.generatedStory.title || this.topic || '故事'}.txt`
+          a.click()
+          URL.revokeObjectURL(url)
+          this.successMessage = '下载成功'
+          setTimeout(() => { this.successMessage = '' }, 2000)
+        } catch (err) {
+          console.error('下载失败:', err)
+          this.errorMessage = '下载失败，请重试'
+          setTimeout(() => { this.errorMessage = '' }, 2000)
+        }
+      } else {
+        this.errorMessage = '没有可下载的内容'
+        setTimeout(() => { this.errorMessage = '' }, 2000)
       }
     }
   }

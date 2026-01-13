@@ -7,12 +7,15 @@ SSE流式视图
 import json
 import logging
 from typing import Generator
-from django.http import StreamingHttpResponse
+from django.http import StreamingHttpResponse, HttpResponse
 from django.views import View
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
+from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework.exceptions import AuthenticationFailed
 
 from core.redis.subscriber import RedisStreamSubscriber
+from apps.projects.models import Project
 
 logger = logging.getLogger(__name__)
 
@@ -38,13 +41,16 @@ class ProjectStageSSEView(View):
         Returns:
             StreamingHttpResponse: SSE流式响应
         """
-        # TODO: 添加权限验证
-        # 验证用户是否有权限访问该项目
-        # user = request.user
-        # if not user.is_authenticated:
-        #     return HttpResponse('Unauthorized', status=401)
+        # 身份验证
+        user = self._authenticate_user(request)
+        if not user:
+            return HttpResponse('Unauthorized', status=401)
 
-        logger.info(f"SSE连接建立: project_id={project_id}, stage_name={stage_name}")
+        # 权限验证：检查用户是否有权限访问该项目
+        if not self._check_project_permission(user, project_id):
+            return HttpResponse('Forbidden: You do not have permission to access this project', status=403)
+
+        logger.info(f"SSE连接建立: project_id={project_id}, stage_name={stage_name}, user={user.username}")
 
         # 创建事件流生成器
         event_stream = self._create_event_stream(project_id, stage_name)
@@ -125,6 +131,60 @@ class ProjectStageSSEView(View):
 
             logger.info(f"SSE连接关闭: project_id={project_id}, stage_name={stage_name}")
 
+    def _authenticate_user(self, request):
+        """
+        验证用户身份（支持JWT Token）
+
+        Args:
+            request: HTTP请求对象
+
+        Returns:
+            User对象或None
+        """
+        try:
+            # 尝试从Authorization header获取JWT token
+            jwt_authenticator = JWTAuthentication()
+            auth_result = jwt_authenticator.authenticate(request)
+            
+            if auth_result is not None:
+                user, token = auth_result
+                return user
+            
+            # 如果没有JWT token，检查session认证
+            if hasattr(request, 'user') and request.user.is_authenticated:
+                return request.user
+            
+            return None
+            
+        except AuthenticationFailed as e:
+            logger.warning(f"SSE认证失败: {str(e)}")
+            return None
+        except Exception as e:
+            logger.error(f"SSE认证异常: {str(e)}")
+            return None
+
+    def _check_project_permission(self, user, project_id: str) -> bool:
+        """
+        检查用户是否有权限访问项目
+
+        Args:
+            user: 用户对象
+            project_id: 项目ID
+
+        Returns:
+            bool: 是否有权限
+        """
+        try:
+            project = Project.objects.get(id=project_id)
+            # 检查项目是否属于该用户
+            return project.user == user
+        except Project.DoesNotExist:
+            logger.warning(f"项目不存在: {project_id}")
+            return False
+        except Exception as e:
+            logger.error(f"权限检查异常: {str(e)}")
+            return False
+
     def _format_sse_message(self, data: dict) -> bytes:
         """
         格式化SSE消息
@@ -177,7 +237,16 @@ class ProjectAllStagesSSEView(View):
         Returns:
             StreamingHttpResponse: SSE流式响应
         """
-        logger.info(f"SSE连接建立(所有阶段): project_id={project_id}")
+        # 身份验证
+        user = self._authenticate_user(request)
+        if not user:
+            return HttpResponse('Unauthorized', status=401)
+
+        # 权限验证：检查用户是否有权限访问该项目
+        if not self._check_project_permission(user, project_id):
+            return HttpResponse('Forbidden: You do not have permission to access this project', status=403)
+
+        logger.info(f"SSE连接建立(所有阶段): project_id={project_id}, user={user.username}")
 
         # 创建事件流生成器 (stage_name=None表示订阅所有阶段)
         event_stream = self._create_event_stream(project_id)
@@ -247,6 +316,60 @@ class ProjectAllStagesSSEView(View):
             })
 
             logger.info(f"SSE连接关闭(所有阶段): project_id={project_id}")
+
+    def _authenticate_user(self, request):
+        """
+        验证用户身份（支持JWT Token）
+
+        Args:
+            request: HTTP请求对象
+
+        Returns:
+            User对象或None
+        """
+        try:
+            # 尝试从Authorization header获取JWT token
+            jwt_authenticator = JWTAuthentication()
+            auth_result = jwt_authenticator.authenticate(request)
+            
+            if auth_result is not None:
+                user, token = auth_result
+                return user
+            
+            # 如果没有JWT token，检查session认证
+            if hasattr(request, 'user') and request.user.is_authenticated:
+                return request.user
+            
+            return None
+            
+        except AuthenticationFailed as e:
+            logger.warning(f"SSE认证失败: {str(e)}")
+            return None
+        except Exception as e:
+            logger.error(f"SSE认证异常: {str(e)}")
+            return None
+
+    def _check_project_permission(self, user, project_id: str) -> bool:
+        """
+        检查用户是否有权限访问项目
+
+        Args:
+            user: 用户对象
+            project_id: 项目ID
+
+        Returns:
+            bool: 是否有权限
+        """
+        try:
+            project = Project.objects.get(id=project_id)
+            # 检查项目是否属于该用户
+            return project.user == user
+        except Project.DoesNotExist:
+            logger.warning(f"项目不存在: {project_id}")
+            return False
+        except Exception as e:
+            logger.error(f"权限检查异常: {str(e)}")
+            return False
 
     def _format_sse_message(self, data: dict) -> bytes:
         """

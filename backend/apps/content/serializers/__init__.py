@@ -16,6 +16,16 @@ from .video_serializers import (
     VideoExportSerializer,
     VideoTemplateSerializer
 )
+from .content_serializers import (
+    CameraMovementSerializer,
+    CameraMovementListSerializer,
+    GeneratedImageSerializer,
+    GeneratedVideoSerializer,
+    StoryboardSerializer,
+    StoryboardListSerializer,
+    ContentRewriteSerializer,
+    BulkCameraMovementSerializer
+)
 
 __all__ = [
     'StorySerializer',
@@ -31,4 +41,12 @@ __all__ = [
     'VideoSceneSerializer',
     'VideoExportSerializer',
     'VideoTemplateSerializer',
+    'CameraMovementSerializer',
+    'CameraMovementListSerializer',
+    'GeneratedImageSerializer',
+    'GeneratedVideoSerializer',
+    'StoryboardSerializer',
+    'StoryboardListSerializer',
+    'ContentRewriteSerializer',
+    'BulkCameraMovementSerializer',
 ]

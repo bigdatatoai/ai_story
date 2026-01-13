@@ -66,6 +66,7 @@
 <script>
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { createSSEClient } from '@/utils/sse-client';
+import { debounce } from 'lodash';
 
 export default {
   name: 'SSEStreamViewer',
@@ -113,15 +114,15 @@ export default {
       return '未连接';
     });
 
-    // 添加日志
-    const addLog = (type, message) => {
+    // 添加日志（防抖处理，避免高频更新）
+    const addLog = debounce((type, message) => {
       const time = new Date().toLocaleTimeString();
       logs.value.push({ type, message, time });
       // 限制日志数量
       if (logs.value.length > 100) {
         logs.value.shift();
       }
-    };
+    }, 200, { leading: true, trailing: true });
 
     // 清空日志
     const clearLogs = () => {
@@ -146,11 +147,11 @@ export default {
           addLog('connected', '连接已建立');
           emit('connected', data);
         })
-        .on('token', (data) => {
+        .on('token', debounce((data) => {
           fullText.value = data.full_text;
           addLog('token', `Token: ${data.content}`);
           emit('token', data);
-        })
+        }, 100, { leading: true, trailing: true }))
         .on('stage_update', (data) => {
           if (data.progress !== undefined) {
             progress.value = data.progress;
@@ -158,14 +159,14 @@ export default {
           addLog('stage_update', `状态: ${data.status}, 进度: ${data.progress}%`);
           emit('progress', data);
         })
-        .on('progress', (data) => {
+        .on('progress', debounce((data) => {
           progress.value = data.progress;
           const message = data.item_name
             ? `进度: ${data.current}/${data.total} (${data.item_name})`
             : `进度: ${data.current}/${data.total}`;
           addLog('progress', message);
           emit('progress', data);
-        })
+        }, 300, { leading: true, trailing: true }))
         .on('done', (data) => {
           fullText.value = data.full_text;
           progress.value = 100;

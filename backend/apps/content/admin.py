@@ -1,40 +1,75 @@
 """内容生成Admin配置"""
 from django.contrib import admin
 from .models import (
-    ContentRewrite,
-    Storyboard,
-    GeneratedImage,
-    CameraMovement,
-    GeneratedVideo,
+    Story,
+    StoryTemplate,
+    Character,
+    StoryFeedback,
+    StoryExport,
+    Video,
+    VideoScene,
+    VideoExport,
+    VideoTemplate,
 )
 
 
-@admin.register(ContentRewrite)
-class ContentRewriteAdmin(admin.ModelAdmin):
-    list_display = ['project', 'model_provider', 'created_at']
-    search_fields = ['original_text', 'rewritten_text']
+@admin.register(Story)
+class StoryAdmin(admin.ModelAdmin):
+    list_display = ['title', 'user', 'genre', 'age_group', 'status', 'quality_score', 'created_at']
+    list_filter = ['status', 'genre', 'age_group', 'created_at']
+    search_fields = ['title', 'topic', 'content']
+    readonly_fields = ['created_at', 'updated_at', 'completed_at']
 
 
-@admin.register(Storyboard)
-class StoryboardAdmin(admin.ModelAdmin):
-    list_display = ['project', 'sequence_number', 'duration_seconds', 'created_at']
+@admin.register(StoryTemplate)
+class StoryTemplateAdmin(admin.ModelAdmin):
+    list_display = ['name', 'genre', 'age_group', 'style', 'is_public', 'created_at']
+    list_filter = ['genre', 'age_group', 'style', 'is_public']
+    search_fields = ['name', 'description']
+
+
+@admin.register(Character)
+class CharacterAdmin(admin.ModelAdmin):
+    list_display = ['name', 'character_type', 'is_public', 'created_at']
+    list_filter = ['character_type', 'is_public']
+    search_fields = ['name', 'personality', 'background']
+
+
+@admin.register(StoryFeedback)
+class StoryFeedbackAdmin(admin.ModelAdmin):
+    list_display = ['story', 'user', 'overall_rating', 'created_at']
+    list_filter = ['overall_rating', 'created_at']
+
+
+@admin.register(StoryExport)
+class StoryExportAdmin(admin.ModelAdmin):
+    list_display = ['story', 'user', 'format', 'status', 'created_at']
+    list_filter = ['format', 'status', 'created_at']
+
+
+@admin.register(Video)
+class VideoAdmin(admin.ModelAdmin):
+    list_display = ['title', 'user', 'generation_type', 'status', 'duration', 'created_at']
+    list_filter = ['generation_type', 'status', 'created_at']
+    search_fields = ['title', 'prompt']
+    readonly_fields = ['created_at', 'updated_at', 'completed_at']
+
+
+@admin.register(VideoScene)
+class VideoSceneAdmin(admin.ModelAdmin):
+    list_display = ['video', 'scene_number', 'duration', 'created_at']
     list_filter = ['created_at']
-    ordering = ['project', 'sequence_number']
+    ordering = ['video', 'scene_number']
 
 
-@admin.register(GeneratedImage)
-class GeneratedImageAdmin(admin.ModelAdmin):
-    list_display = ['storyboard', 'status', 'width', 'height', 'created_at']
-    list_filter = ['status', 'created_at']
+@admin.register(VideoExport)
+class VideoExportAdmin(admin.ModelAdmin):
+    list_display = ['video', 'user', 'format', 'status', 'created_at']
+    list_filter = ['format', 'status', 'created_at']
 
 
-@admin.register(CameraMovement)
-class CameraMovementAdmin(admin.ModelAdmin):
-    list_display = ['storyboard', 'movement_type', 'model_provider', 'created_at']
-    list_filter = ['movement_type']
-
-
-@admin.register(GeneratedVideo)
-class GeneratedVideoAdmin(admin.ModelAdmin):
-    list_display = ['storyboard', 'status', 'duration', 'width', 'height', 'created_at']
-    list_filter = ['status', 'created_at']
+@admin.register(VideoTemplate)
+class VideoTemplateAdmin(admin.ModelAdmin):
+    list_display = ['name', 'category', 'is_public', 'created_at']
+    list_filter = ['category', 'is_public']
+    search_fields = ['name', 'description']

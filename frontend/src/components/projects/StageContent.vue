@@ -144,6 +144,7 @@
 import { formatDate } from '@/utils/helpers';
 import { createProjectStageSSE, SSE_EVENT_TYPES } from '@/services/sseService';
 import StoryboardViewer from '@/components/content/StoryboardViewer.vue';
+import { validateStageInput, validateJSON } from '@/utils/validators';
 
 export default {
   name: 'StageContent',
@@ -183,6 +184,8 @@ export default {
       sseClient: null,
       streamProgress: 0, // SSE 流式进度
       streamError: null, // SSE 错误信息
+      sseTimeout: null, // SSE 超时定时器
+      validationErrors: [], // 参数校验错误
     };
   },
   computed: {
@@ -377,8 +380,54 @@ export default {
     },
 
     handleExecute() {
+      // 执行前校验参数
+      if (!this.validateInput()) {
+        return;
+      }
+      
       // 使用 SSE 流式执行
       this.handleSSEExecute();
+    },
+
+    /**
+     * 校验输入参数
+     */
+    validateInput() {
+      this.validationErrors = [];
+
+      // 尝试解析 JSON
+      const jsonValidation = validateJSON(this.localInputData);
+      if (!jsonValidation.valid) {
+        // 如果不是合法 JSON，检查是否为纯文本（rewrite 阶段允许）
+        if (this.stageType !== 'rewrite') {
+          this.validationErrors.push(jsonValidation.error);
+          this.$message?.error(`输入数据格式错误: ${jsonValidation.error}`);
+          return false;
+        }
+      }
+
+      // 根据阶段类型校验
+      const inputData = jsonValidation.valid ? jsonValidation.data : this.localInputData;
+      const stageValidation = validateStageInput(this.stageType, inputData);
+      
+      if (!stageValidation.valid) {
+        this.validationErrors = stageValidation.errors;
+        this.$message?.error(`参数校验失败: ${stageValidation.errors[0]}`);
+        
+        // 显示所有错误
+        if (stageValidation.errors.length > 1) {
+          setTimeout(() => {
+            stageValidation.errors.forEach((error, index) => {
+              if (index > 0) {
+                this.$message?.warning(error);
+              }
+            });
+          }, 500);
+        }
+        return false;
+      }
+
+      return true;
     },
 
     /**
@@ -418,6 +467,15 @@ export default {
       this.disconnectSSE();
 
       console.log('[StageContent] 连接 SSE:', this.projectId, this.stageType);
+
+      // 设置超时保护（5分钟）
+      this.sseTimeout = setTimeout(() => {
+        console.warn('[StageContent] SSE 连接超时');
+        this.streamError = '任务执行超时，请检查网络或重试';
+        this.isStreaming = false;
+        this.disconnectSSE();
+        this.$message?.error('任务执行超时，请重试');
+      }, 300000); // 5分钟
 
       // 创建 SSE 客户端
       this.sseClient = createProjectStageSSE(this.projectId, this.stageType, {
@@ -460,6 +518,13 @@ export default {
         })
         .on(SSE_EVENT_TYPES.DONE, (data) => {
           console.log('[StageContent] 生成完成:', data);
+          
+          // 清除超时定时器
+          if (this.sseTimeout) {
+            clearTimeout(this.sseTimeout);
+            this.sseTimeout = null;
+          }
+          
           // 更新最终输出
           if (data.full_text !== undefined) {
             this.localOutputData = data.full_text;
@@ -483,11 +548,33 @@ export default {
         })
         .on(SSE_EVENT_TYPES.ERROR, (data) => {
           console.error('[StageContent] SSE 错误:', data);
-          this.streamError = data.error || 'SSE 连接错误';
+          
+          // 清除超时定时器
+          if (this.sseTimeout) {
+            clearTimeout(this.sseTimeout);
+            this.sseTimeout = null;
+          }
+          
+          // 解析错误信息，提供更详细的引导
+          const errorMessage = this.parseErrorMessage(data.error);
+          this.streamError = errorMessage.message;
           this.isStreaming = false;
 
-          // 显示错误提示
-          this.$message?.error(this.streamError);
+          // 显示错误提示和建议
+          this.$message?.error(errorMessage.message);
+          if (errorMessage.suggestion) {
+            setTimeout(() => {
+              this.$message?.info(errorMessage.suggestion);
+            }, 1000);
+          }
+        })
+        .on(SSE_EVENT_TYPES.HEARTBEAT_TIMEOUT, (data) => {
+          console.warn('[StageContent] SSE 心跳超时:', data);
+          this.$message?.warning('连接不稳定，正在尝试重连...');
+        })
+        .on(SSE_EVENT_TYPES.RECONNECTING, (data) => {
+          console.log('[StageContent] SSE 正在重连:', data);
+          this.$message?.info('连接断开，正在重连...');
         })
         .on(SSE_EVENT_TYPES.STREAM_END, (data) => {
           console.log('[StageContent] SSE 流结束:', data);
@@ -508,6 +595,49 @@ export default {
         this.sseClient.disconnect();
         this.sseClient = null;
       }
+      
+      // 清除超时定时器
+      if (this.sseTimeout) {
+        clearTimeout(this.sseTimeout);
+        this.sseTimeout = null;
+      }
+    },
+
+    /**
+     * 解析错误信息，提供更详细的引导
+     */
+    parseErrorMessage(error) {
+      const errorStr = String(error || '').toLowerCase();
+      
+      // 运镜参数错误
+      if (errorStr.includes('speed') || errorStr.includes('duration') || errorStr.includes('运镜')) {
+        return {
+          message: '运镜参数错误，请检查 speed 和 duration 字段',
+          suggestion: '建议: speed 范围 0.1-5，duration 范围 1-30 秒',
+        };
+      }
+      
+      // AI 模型服务不可用
+      if (errorStr.includes('timeout') || errorStr.includes('超时') || errorStr.includes('unavailable')) {
+        return {
+          message: 'AI 模型服务暂不可用，请稍后重试',
+          suggestion: '建议: 等待 1-2 分钟后重试，或联系管理员',
+        };
+      }
+      
+      // 参数格式错误
+      if (errorStr.includes('json') || errorStr.includes('parse') || errorStr.includes('格式')) {
+        return {
+          message: '输入数据格式错误，请检查 JSON 格式',
+          suggestion: '建议: 点击“重置”按钮恢复默认格式',
+        };
+      }
+      
+      // 默认错误
+      return {
+        message: error || '生成失败，请重试',
+        suggestion: '如问题持续，请检查输入数据或联系管理员',
+      };
     },
 
     /**
@@ -543,6 +673,14 @@ export default {
       // 单个场景生成完成（旧的API调用方式，已废弃）
       // 现在由WebSocket自动处理，这里保留兼容性
       console.log('[StageContent] 单个场景生成完成（兼容模式）');
+    },
+
+    /**
+     * 获取验证错误提示
+     */
+    getValidationErrorMessage() {
+      if (this.validationErrors.length === 0) return '';
+      return this.validationErrors.join('; ');
     },
 
     // 处理场景数据更新事件（来自 StoryboardViewer 的编辑）

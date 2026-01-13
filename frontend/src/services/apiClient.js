@@ -1,17 +1,22 @@
 import axios from 'axios';
 import store from '@/store';
 import router from '@/router';
+import errorHandler from './errorHandler';
+import networkMonitor from './networkMonitor';
+import notificationService from './notificationService';
 
-// 简单的通知函数 (后续可替换为专门的通知组件)
 const showMessage = (message, type = 'error') => {
-  console[type === 'error' ? 'error' : 'log'](`[${type.toUpperCase()}]`, message);
-  // TODO: 实现全局 Toast 通知组件
+  if (type === 'error') {
+    notificationService.error(message);
+  } else {
+    notificationService.info(message);
+  }
 };
 
 // 创建 axios 实例
 const apiClient = axios.create({
   baseURL: process.env.VUE_APP_API_BASE_URL || '/api/v1',
-  timeout: 3000000,
+  timeout: 30000, // 30秒超时（修复：原来是3000000毫秒=50分钟）
   headers: {
     'Content-Type': 'application/json',
   },
@@ -116,34 +121,22 @@ apiClient.interceptors.response.use(
       }
     }
 
-    // 处理其他HTTP错误
-    if (response) {
-      switch (response.status) {
-        case 400:
-          showMessage('请求参数错误');
-          break;
-        case 401:
-          showMessage('未授权,请登录');
-          break;
-        case 403:
-          showMessage('没有权限');
-          break;
-        case 404:
-          showMessage('请求的资源不存在');
-          break;
-        case 500:
-          showMessage('服务器内部错误');
-          break;
-        default:
-          showMessage(response.data?.message || '请求失败');
-      }
-    } else if (error.request) {
-      showMessage('网络错误,请检查网络连接');
-    } else {
-      showMessage(error.message || '请求失败');
+    // 使用全局错误处理器
+    const processedError = errorHandler.handle(error, {
+      url: originalRequest?.url,
+      method: originalRequest?.method,
+    });
+
+    // 显示友好的错误消息
+    if (processedError.friendlyMessage) {
+      notificationService.error(processedError.friendlyMessage, {
+        suggestion: processedError.suggestion,
+        canRetry: processedError.canRetry,
+        persistent: response?.status >= 500,
+      });
     }
 
-    return Promise.reject(error);
+    return Promise.reject(processedError);
   }
 );
 

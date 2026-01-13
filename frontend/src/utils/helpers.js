@@ -115,32 +115,48 @@ export function deepClone(obj) {
 
 /**
  * 获取项目状态标签
- * @param {string} status - 状态值
- * @returns {object}
+ * @param {string|undefined|null} status - 状态值
+ * @returns {object} { label: string, type: string }
  */
 export function getProjectStatusTag(status) {
+  // 入参校验：非字符串转为空字符串
+  const validStatus = typeof status === 'string' ? status.trim() : '';
+  
   const statusMap = {
     draft: { label: '草稿', type: 'info' },
     processing: { label: '处理中', type: 'warning' },
     completed: { label: '已完成', type: 'success' },
     failed: { label: '失败', type: 'danger' },
-    paused: { label: '已暂停', type: '' },
+    paused: { label: '已暂停', type: 'info' }, // 修复：补充 type
   };
-  return statusMap[status] || { label: status, type: 'info' };
+  
+  // 非法状态兜底：明确提示"状态异常"，便于调试
+  return statusMap[validStatus] || { 
+    label: `状态异常(${validStatus})`, 
+    type: 'danger' 
+  };
 }
 
 /**
  * 获取阶段状态标签
- * @param {string} status - 状态值
- * @returns {object}
+ * @param {string|undefined|null} status - 状态值
+ * @returns {object} { label: string, type: string }
  */
 export function getStageStatusTag(status) {
+  // 入参校验：非字符串转为空字符串
+  const validStatus = typeof status === 'string' ? status.trim() : '';
+  
   const statusMap = {
     pending: { label: '待执行', type: 'info' },
     running: { label: '执行中', type: 'warning' },
     completed: { label: '已完成', type: 'success' },
     failed: { label: '失败', type: 'danger' },
-    skipped: { label: '已跳过', type: '' },
+    skipped: { label: '已跳过', type: 'info' }, // 修复：补充 type
   };
-  return statusMap[status] || { label: status, type: 'info' };
+  
+  // 非法状态兜底：明确提示"状态异常"，便于调试
+  return statusMap[validStatus] || { 
+    label: `状态异常(${validStatus})`, 
+    type: 'danger' 
+  };
 }

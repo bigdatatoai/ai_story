@@ -17,8 +17,12 @@ export class SSEClient {
     this.eventSource = null;
     this.listeners = {};
     this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = 3;
+    this.maxReconnectAttempts = 10; // 增加到10次
     this.reconnectDelay = 1000; // 1秒
+    this.connectionTimeout = 60000; // 60秒连接超时
+    this.heartbeatInterval = null;
+    this.lastMessageTime = null;
+    this.heartbeatTimeout = 30000; // 30秒无消息视为超时
   }
 
   /**
@@ -46,6 +50,8 @@ export class SSEClient {
       this.eventSource.onopen = () => {
         console.log('[SSE] 连接已建立');
         this.reconnectAttempts = 0; // 重置重连计数
+        this.lastMessageTime = Date.now();
+        this.startHeartbeatMonitor();
         this.emit('open', { url });
       };
 
@@ -54,6 +60,9 @@ export class SSEClient {
         try {
           const data = JSON.parse(event.data);
           console.log('[SSE] 收到消息:', data);
+
+          // 更新最后消息时间
+          this.lastMessageTime = Date.now();
 
           // 触发通用message事件
           this.emit('message', data);
@@ -151,11 +160,46 @@ export class SSEClient {
   }
 
   /**
+   * 启动心跳监控
+   */
+  startHeartbeatMonitor() {
+    this.stopHeartbeatMonitor();
+    
+    this.heartbeatInterval = setInterval(() => {
+      if (!this.lastMessageTime) return;
+      
+      const timeSinceLastMessage = Date.now() - this.lastMessageTime;
+      
+      if (timeSinceLastMessage > this.heartbeatTimeout) {
+        console.warn('[SSE] 心跳超时，连接可能已断开');
+        this.emit('heartbeat_timeout', { timeSinceLastMessage });
+        
+        // 尝试重连
+        if (this.eventSource) {
+          this.eventSource.close();
+          this.emit('reconnecting', { reason: 'heartbeat_timeout' });
+        }
+      }
+    }, 10000); // 每10秒检查一次
+  }
+
+  /**
+   * 停止心跳监控
+   */
+  stopHeartbeatMonitor() {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+  }
+
+  /**
    * 断开连接
    */
   disconnect() {
     if (this.eventSource) {
       console.log('[SSE] 正在关闭连接');
+      this.stopHeartbeatMonitor();
       this.eventSource.close();
       this.cleanup();
     }
@@ -165,9 +209,11 @@ export class SSEClient {
    * 清理资源
    */
   cleanup() {
+    this.stopHeartbeatMonitor();
     this.eventSource = null;
     this.listeners = {};
     this.reconnectAttempts = 0;
+    this.lastMessageTime = null;
   }
 
   /**
@@ -198,7 +244,7 @@ export class SSEClient {
  */
 export function createProjectStageSSE(projectId, stageName, options = {}) {
   const client = new SSEClient();
-  const url = `${API_BASE_URL}/api/v1/projects/sse/projects/${projectId}/stages/${stageName}/`;
+  const url = `${API_BASE_URL}/api/v1/sse/projects/${projectId}/stages/${stageName}/`;
   client.connect(url, options);
   return client;
 }
@@ -212,7 +258,7 @@ export function createProjectStageSSE(projectId, stageName, options = {}) {
  */
 export function createProjectAllStagesSSE(projectId, options = {}) {
   const client = new SSEClient();
-  const url = `${API_BASE_URL}/api/v1/projects/sse/projects/${projectId}/`;
+  const url = `${API_BASE_URL}/api/v1/sse/projects/${projectId}/`;
   client.connect(url, options);
   return client;
 }

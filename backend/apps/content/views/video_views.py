@@ -53,68 +53,72 @@ class VideoViewSet(viewsets.ModelViewSet):
     
     def list(self, request, *args, **kwargs):
         """重写list方法，返回统一格式"""
+        from core.utils.response_wrapper import APIResponse
+        
         queryset = self.filter_queryset(self.get_queryset())
         page = self.paginate_queryset(queryset)
+        
         if page is not None:
             serializer = self.get_serializer(page, many=True)
-            return Response({
-                'success': True,
-                'data': {
-                    'results': serializer.data,
-                    'count': self.paginator.page.paginator.count,
-                    'next': self.paginator.get_next_link(),
-                    'previous': self.paginator.get_previous_link()
-                }
-            })
+            return APIResponse.paginated(
+                results=serializer.data,
+                count=self.paginator.page.paginator.count,
+                next_url=self.paginator.get_next_link(),
+                previous_url=self.paginator.get_previous_link()
+            )
         
         serializer = self.get_serializer(queryset, many=True)
-        return Response({
-            'success': True,
-            'data': serializer.data
-        })
+        return APIResponse.success(data=serializer.data)
     
     def create(self, request, *args, **kwargs):
         """重写create方法，返回统一格式"""
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
-        headers = self.get_success_headers(serializer.data)
-        return Response({
-            'success': True,
-            'message': '创建成功',
-            'data': serializer.data
-        }, status=status.HTTP_201_CREATED, headers=headers)
+        from core.utils.response_wrapper import APIResponse
+        
+        try:
+            serializer = self.get_serializer(data=request.data)
+            if not serializer.is_valid():
+                logger.error(f"视频创建验证失败: {serializer.errors}")
+                logger.error(f"请求数据: {request.data}")
+                return APIResponse.error(
+                    message='请求参数有误，请检查后重试',
+                    data=serializer.errors,
+                    http_status=status.HTTP_400_BAD_REQUEST
+                )
+            self.perform_create(serializer)
+            return APIResponse.created(data=serializer.data, message='创建成功')
+        except Exception as e:
+            logger.error(f"视频创建失败: {str(e)}", exc_info=True)
+            return APIResponse.error(
+                message=f'创建失败: {str(e)}',
+                http_status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
     
     def retrieve(self, request, *args, **kwargs):
         """重写retrieve方法，返回统一格式"""
+        from core.utils.response_wrapper import APIResponse
+        
         instance = self.get_object()
         serializer = self.get_serializer(instance)
-        return Response({
-            'success': True,
-            'data': serializer.data
-        })
+        return APIResponse.success(data=serializer.data)
     
     def update(self, request, *args, **kwargs):
         """重写update方法，返回统一格式"""
+        from core.utils.response_wrapper import APIResponse
+        
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
-        return Response({
-            'success': True,
-            'message': '更新成功',
-            'data': serializer.data
-        })
+        return APIResponse.updated(data=serializer.data, message='更新成功')
     
     def destroy(self, request, *args, **kwargs):
         """重写destroy方法，返回统一格式"""
+        from core.utils.response_wrapper import APIResponse
+        
         instance = self.get_object()
         self.perform_destroy(instance)
-        return Response({
-            'success': True,
-            'message': '删除成功'
-        }, status=status.HTTP_200_OK)
+        return APIResponse.deleted(message='删除成功')
     
     @action(detail=False, methods=['post'])
     @rate_limit_decorator(requests=5, window=60)
@@ -132,13 +136,15 @@ class VideoViewSet(viewsets.ModelViewSet):
             "style": "cartoon"
         }
         """
+        from core.utils.response_wrapper import APIResponse, ErrorCode
+        
         try:
             prompt = request.data.get('prompt')
             if not prompt:
-                return Response({
-                    'success': False,
-                    'error': '请提供视频描述'
-                }, status=status.HTTP_400_BAD_REQUEST)
+                return APIResponse.bad_request(
+                    message='请提供视频描述',
+                    code=ErrorCode.MISSING_PARAMS
+                )
             
             # 创建视频记录
             video = Video.objects.create(
@@ -169,16 +175,15 @@ class VideoViewSet(viewsets.ModelViewSet):
                 video.completed_at = timezone.now()
                 video.save()
                 
-                return Response({
-                    'success': True,
-                    'message': '视频生成成功',
-                    'data': {
+                return APIResponse.success(
+                    data={
                         'video_id': str(video.id),
                         'video_url': video.video_url,
                         'thumbnail_url': video.thumbnail_url,
                         'duration': video.duration
-                    }
-                })
+                    },
+                    message='视频生成成功'
+                )
                 
             except Exception as e:
                 video.status = 'failed'
@@ -188,10 +193,10 @@ class VideoViewSet(viewsets.ModelViewSet):
             
         except Exception as e:
             logger.error(f"文本转视频失败: {str(e)}", exc_info=True)
-            return Response({
-                'success': False,
-                'error': f'视频生成失败: {str(e)}'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return APIResponse.server_error(
+                message=f'视频生成失败: {str(e)}',
+                code=ErrorCode.VIDEO_GENERATION_FAILED
+            )
     
     @action(detail=False, methods=['post'])
     @rate_limit_decorator(requests=5, window=60)
@@ -209,12 +214,14 @@ class VideoViewSet(viewsets.ModelViewSet):
         }
         """
         try:
+            from core.utils.response_wrapper import APIResponse, ErrorCode
+            
             image_url = request.data.get('image_url')
             if not image_url:
-                return Response({
-                    'success': False,
-                    'error': '请提供图片URL'
-                }, status=status.HTTP_400_BAD_REQUEST)
+                return APIResponse.bad_request(
+                    message='请提供图片URL',
+                    code=ErrorCode.MISSING_PARAMS
+                )
             
             # 创建视频记录
             video = Video.objects.create(
@@ -285,12 +292,14 @@ class VideoViewSet(viewsets.ModelViewSet):
         }
         """
         try:
+            from core.utils.response_wrapper import APIResponse, ErrorCode
+            
             storyboard = request.data.get('storyboard', [])
             if not storyboard:
-                return Response({
-                    'success': False,
-                    'error': '请提供故事板'
-                }, status=status.HTTP_400_BAD_REQUEST)
+                return APIResponse.bad_request(
+                    message='请提供故事板',
+                    code=ErrorCode.MISSING_PARAMS
+                )
             
             # 创建视频记录
             video = Video.objects.create(

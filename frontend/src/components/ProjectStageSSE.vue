@@ -153,6 +153,7 @@
 
 <script>
 import { createProjectStageSSE, createProjectAllStagesSSE, SSE_EVENT_TYPES } from '@/services/sseService';
+import { debounce } from 'lodash';
 
 export default {
   name: 'ProjectStageSSE',
@@ -292,9 +293,10 @@ export default {
         this.addMessage('stage_update', data);
       });
 
-      this.sseClient.on(SSE_EVENT_TYPES.PROGRESS, (data) => {
+      // 进度事件使用防抖处理，避免高频更新
+      this.sseClient.on(SSE_EVENT_TYPES.PROGRESS, debounce((data) => {
         this.addMessage('progress', data);
-      });
+      }, 300, { leading: true, trailing: true }));
 
       this.sseClient.on(SSE_EVENT_TYPES.DONE, (data) => {
         this.addMessage('done', data);
@@ -315,14 +317,21 @@ export default {
         timestamp: new Date().toLocaleTimeString(),
       });
 
-      // 自动滚动到底部
+      // 防抖滚动到底部，避免高频渲染卡顿
+      this.scrollToBottom();
+    },
+
+    /**
+     * 防抖滚动到底部（500ms内只执行一次）
+     */
+    scrollToBottom: debounce(function() {
       this.$nextTick(() => {
         const container = this.$el.querySelector('.overflow-y-auto');
         if (container) {
           container.scrollTop = container.scrollHeight;
         }
       });
-    },
+    }, 500, { leading: true, trailing: true }),
 
     /**
      * 格式化消息内容

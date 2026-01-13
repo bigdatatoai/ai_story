@@ -78,17 +78,70 @@ class VideoSerializer(serializers.ModelSerializer):
 class VideoCreateSerializer(serializers.ModelSerializer):
     """视频创建序列化器"""
     
+    prompt = serializers.CharField(required=False, allow_blank=True)
+    type = serializers.CharField(write_only=True, required=False)
+    theme = serializers.CharField(write_only=True, required=False)
+    episode_count = serializers.IntegerField(write_only=True, required=False)
+    duration_per_episode = serializers.IntegerField(write_only=True, required=False)
+    visual_style = serializers.CharField(write_only=True, required=False)
+    
     class Meta:
         model = Video
         fields = [
-            'title', 'description', 'generation_type', 'prompt', 'generation_config'
+            'title', 'description', 'generation_type', 'prompt', 'generation_config',
+            'type', 'theme', 'episode_count', 'duration_per_episode', 'visual_style'
         ]
+        extra_kwargs = {
+            'title': {'required': False},
+            'generation_type': {'required': False},
+            'description': {'required': False},
+        }
     
-    def validate_prompt(self, value):
-        """验证prompt不能为空"""
-        if not value or not value.strip():
-            raise serializers.ValidationError("视频描述不能为空")
-        return value.strip()
+    def validate(self, attrs):
+        """处理前端字段映射"""
+        # 处理 type -> generation_type 映射
+        if 'type' in attrs:
+            attrs['generation_type'] = attrs.pop('type', 'text_to_video')
+        
+        # 如果没有 generation_type，设置默认值
+        if 'generation_type' not in attrs:
+            attrs['generation_type'] = 'text_to_video'
+        
+        # 处理 theme -> title 映射
+        if 'theme' in attrs:
+            attrs['title'] = attrs.pop('theme', '未命名视频')
+            if 'prompt' not in attrs or not attrs.get('prompt'):
+                attrs['prompt'] = attrs['title']
+        
+        # 确保有 title
+        if not attrs.get('title'):
+            attrs['title'] = '未命名视频'
+        
+        # 确保有 prompt
+        if not attrs.get('prompt'):
+            attrs['prompt'] = attrs.get('title', '未命名视频')
+        
+        # 处理配置字段
+        config = attrs.get('generation_config', {})
+        if 'episode_count' in attrs:
+            config['episode_count'] = attrs.pop('episode_count')
+        if 'duration_per_episode' in attrs:
+            config['duration_per_episode'] = attrs.pop('duration_per_episode')
+        if 'visual_style' in attrs:
+            config['visual_style'] = attrs.pop('visual_style')
+        
+        if config:
+            attrs['generation_config'] = config
+        
+        return attrs
+    
+    def validate_generation_type(self, value):
+        """验证生成类型"""
+        valid_types = ['text_to_video', 'image_to_video', 'storyboard_to_video', 'story_to_video', 
+                       'drama', 'anime', 'comic']
+        if value not in valid_types:
+            return 'text_to_video'
+        return value
 
 
 class VideoUpdateSerializer(serializers.ModelSerializer):

@@ -6,15 +6,37 @@ from .views import (
     StorageImageDetailView, 
     StorageVideoDetailView
 )
-from .views.story_views import StoryViewSet, StoryTemplateViewSet, CharacterViewSet
-from .views.video_views import VideoViewSet
+from .api_views import (
+    CameraMovementViewSet,
+    GeneratedImageViewSet,
+    GeneratedVideoViewSet,
+    StoryboardViewSet,
+    ContentRewriteViewSet
+)
+
+try:
+    from .views.story_views import StoryViewSet, StoryTemplateViewSet, CharacterViewSet
+    from .views.video_views import VideoViewSet
+    HAS_STORY_VIEWS = True
+except ImportError:
+    HAS_STORY_VIEWS = False
 
 # 创建DRF路由器
 router = DefaultRouter()
-router.register(r'stories', StoryViewSet, basename='story')
-router.register(r'story-templates', StoryTemplateViewSet, basename='story-template')
-router.register(r'characters', CharacterViewSet, basename='character')
-router.register(r'videos', VideoViewSet, basename='video')
+
+# 新增REST API路由
+router.register(r'camera-movements', CameraMovementViewSet, basename='camera-movement')
+router.register(r'images', GeneratedImageViewSet, basename='generated-image')
+router.register(r'videos-generated', GeneratedVideoViewSet, basename='generated-video')
+router.register(r'storyboards', StoryboardViewSet, basename='storyboard')
+router.register(r'content-rewrites', ContentRewriteViewSet, basename='content-rewrite')
+
+# 原有路由（如果存在）
+if HAS_STORY_VIEWS:
+    router.register(r'stories', StoryViewSet, basename='story')
+    router.register(r'story-templates', StoryTemplateViewSet, basename='story-template')
+    router.register(r'characters', CharacterViewSet, basename='character')
+    router.register(r'videos', VideoViewSet, basename='video')
 
 urlpatterns = [
     # Storage图片API

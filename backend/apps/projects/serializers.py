@@ -8,6 +8,7 @@ from rest_framework import serializers
 
 from apps.projects.utils import parse_storyboard_json
 from .models import Project, ProjectStage, ProjectModelConfig
+from .constants import ProjectStatus, StageStatus, StageType, ErrorMessage
 
 
 class ProjectStageSerializer(serializers.ModelSerializer):
@@ -71,19 +72,44 @@ class ProjectModelConfigSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at']
 
     def get_rewrite_providers_names(self, obj):
-        return [p.name for p in obj.rewrite_providers.all()]
+        try:
+            if obj is None:
+                return []
+            return [p.name for p in obj.rewrite_providers.all()]
+        except Exception:
+            return []
 
     def get_storyboard_providers_names(self, obj):
-        return [p.name for p in obj.storyboard_providers.all()]
+        try:
+            if obj is None:
+                return []
+            return [p.name for p in obj.storyboard_providers.all()]
+        except Exception:
+            return []
 
     def get_image_providers_names(self, obj):
-        return [p.name for p in obj.image_providers.all()]
+        try:
+            if obj is None:
+                return []
+            return [p.name for p in obj.image_providers.all()]
+        except Exception:
+            return []
 
     def get_camera_providers_names(self, obj):
-        return [p.name for p in obj.camera_providers.all()]
+        try:
+            if obj is None:
+                return []
+            return [p.name for p in obj.camera_providers.all()]
+        except Exception:
+            return []
 
     def get_video_providers_names(self, obj):
-        return [p.name for p in obj.video_providers.all()]
+        try:
+            if obj is None:
+                return []
+            return [p.name for p in obj.video_providers.all()]
+        except Exception:
+            return []
 
 
 class ProjectListSerializer(serializers.ModelSerializer):
@@ -109,10 +135,20 @@ class ProjectListSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'user', 'created_at', 'updated_at', 'completed_at']
 
     def get_stages_count(self, obj):
-        return obj.stages.count()
+        try:
+            if obj is None:
+                return 0
+            return obj.stages.count()
+        except Exception:
+            return 0
 
     def get_completed_stages_count(self, obj):
-        return obj.stages.filter(status='completed').count()
+        try:
+            if obj is None:
+                return 0
+            return obj.stages.filter(status=StageStatus.COMPLETED).count()
+        except Exception:
+            return 0
 
 
 class ProjectDetailSerializer(serializers.ModelSerializer):
@@ -145,20 +181,40 @@ class ProjectDetailSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'user', 'created_at', 'updated_at', 'completed_at']
 
     def get_total_stages(self, obj):
-        return obj.stages.count()
+        try:
+            if obj is None:
+                return 0
+            return obj.stages.count()
+        except Exception:
+            return 0
 
     def get_completed_stages(self, obj):
-        return obj.stages.filter(status='completed').count()
+        try:
+            if obj is None:
+                return 0
+            return obj.stages.filter(status=StageStatus.COMPLETED).count()
+        except Exception:
+            return 0
 
     def get_failed_stages(self, obj):
-        return obj.stages.filter(status='failed').count()
+        try:
+            if obj is None:
+                return 0
+            return obj.stages.filter(status=StageStatus.FAILED).count()
+        except Exception:
+            return 0
 
     def get_progress_percentage(self, obj):
-        total = obj.stages.count()
-        if total == 0:
+        try:
+            if obj is None:
+                return 0
+            total = obj.stages.count()
+            if total == 0:
+                return 0
+            completed = obj.stages.filter(status=StageStatus.COMPLETED).count()
+            return round((completed / total) * 100, 2)
+        except Exception:
             return 0
-        completed = obj.stages.filter(status='completed').count()
-        return round((completed / total) * 100, 2)
 
 
 class ProjectCreateSerializer(serializers.ModelSerializer):
@@ -187,35 +243,40 @@ class ProjectCreateSerializer(serializers.ModelSerializer):
         # 创建项目
         project = Project.objects.create(**validated_data)
 
-        # 初始化5个阶段
-        for stage_type in ["rewrite", "storyboard"]:
+        # 初始化所有阶段
+        for stage_type in [StageType.REWRITE, StageType.STORYBOARD]:
             ProjectStage.objects.create(
-                    project=project,
-                    stage_type=stage_type,
-                    status='pending',
-                    input_data={
-                        "raw_text": project.original_topic,
-                        "human_text": ""
-                    },
-                    output_data = {
-                        "raw_text": "",
-                        "human_text": ""
-                    }
+                project=project,
+                stage_type=stage_type,
+                status=StageStatus.PENDING,
+                input_data={
+                    "raw_text": project.original_topic,
+                    "human_text": ""
+                },
+                output_data={
+                    "raw_text": "",
+                    "human_text": ""
+                }
             )
-        stage_types = ['image_generation', 'camera_movement', 'video_generation']
+        
+        stage_types = [
+            StageType.IMAGE_GENERATION,
+            StageType.CAMERA_MOVEMENT,
+            StageType.VIDEO_GENERATION
+        ]
         for stage_type in stage_types:
             ProjectStage.objects.create(
                 project=project,
                 stage_type=stage_type,
-                status='pending',
+                status=StageStatus.PENDING,
                 input_data={
-                        "raw_text": "",
-                        "human_text": ""
-                    },
-                    output_data = {
-                        "raw_text": "",
-                        "human_text": ""
-                    }
+                    "raw_text": "",
+                    "human_text": ""
+                },
+                output_data={
+                    "raw_text": "",
+                    "human_text": ""
+                }
             )
         
         # 创建默认模型配置
@@ -236,11 +297,11 @@ class ProjectUpdateSerializer(serializers.ModelSerializer):
         instance = self.instance
         if instance:
             # 已完成的项目不能修改为其他状态
-            if instance.status == 'completed' and value != 'completed':
+            if instance.status == ProjectStatus.COMPLETED and value != ProjectStatus.COMPLETED:
                 raise serializers.ValidationError("已完成的项目不能修改状态")
 
             # 只有暂停和草稿状态可以恢复处理
-            if value == 'processing' and instance.status not in ['paused', 'draft']:
+            if value == ProjectStatus.PROCESSING and instance.status not in [ProjectStatus.PAUSED, ProjectStatus.DRAFT]:
                 raise serializers.ValidationError(f"项目状态为 {instance.get_status_display()} 时不能开始处理")
 
         return value
@@ -250,7 +311,13 @@ class StageRetrySerializer(serializers.Serializer):
     """阶段重试序列化器"""
 
     stage_name = serializers.ChoiceField(
-        choices=['rewrite', 'storyboard', 'image_generation', 'camera_movement', 'video_generation']
+        choices=[
+            (StageType.REWRITE, '文案改写'),
+            (StageType.STORYBOARD, '分镜生成'),
+            (StageType.IMAGE_GENERATION, '文生图'),
+            (StageType.CAMERA_MOVEMENT, '运镜生成'),
+            (StageType.VIDEO_GENERATION, '图生视频'),
+        ]
     )
 
     def validate_stage_name(self, value):
@@ -262,12 +329,17 @@ class StageRetrySerializer(serializers.Serializer):
         try:
             stage = ProjectStage.objects.get(project_id=project_id, stage_type=value)
         except ProjectStage.DoesNotExist:
-            raise serializers.ValidationError(f"阶段 {value} 不存在")
+            raise serializers.ValidationError(
+                ErrorMessage.STAGE_NOT_FOUND.format(stage_name=value)
+            )
 
         # 检查重试次数
         if stage.retry_count >= stage.max_retries:
             raise serializers.ValidationError(
-                f"阶段 {value} 已达到最大重试次数 ({stage.max_retries})"
+                ErrorMessage.STAGE_MAX_RETRIES.format(
+                    stage_name=stage.get_stage_type_display(),
+                    max_retries=stage.max_retries
+                )
             )
 
         return value
@@ -277,7 +349,13 @@ class StageExecuteSerializer(serializers.Serializer):
     """阶段执行序列化器"""
 
     stage_name = serializers.ChoiceField(
-        choices=['rewrite', 'storyboard', 'image_generation', 'camera_movement', 'video_generation']
+        choices=[
+            (StageType.REWRITE, '文案改写'),
+            (StageType.STORYBOARD, '分镜生成'),
+            (StageType.IMAGE_GENERATION, '文生图'),
+            (StageType.CAMERA_MOVEMENT, '运镜生成'),
+            (StageType.VIDEO_GENERATION, '图生视频'),
+        ]
     )
     input_data = serializers.JSONField(required=False, default=dict)
 
@@ -292,10 +370,10 @@ class StageExecuteSerializer(serializers.Serializer):
         try:
             project = Project.objects.get(id=project_id)
         except Project.DoesNotExist:
-            raise serializers.ValidationError("项目不存在")
+            raise serializers.ValidationError(ErrorMessage.PROJECT_NOT_FOUND)
 
         # 检查项目状态
-        if project.status not in ['draft', 'processing', 'paused']:
+        if project.status not in ProjectStatus.EXECUTABLE_STATUSES:
             raise serializers.ValidationError(
                 f"项目状态为 {project.get_status_display()} 时不能执行阶段"
             )
@@ -304,11 +382,9 @@ class StageExecuteSerializer(serializers.Serializer):
         try:
             stage = ProjectStage.objects.get(project_id=project_id, stage_type=stage_name)
         except ProjectStage.DoesNotExist:
-            raise serializers.ValidationError(f"阶段 {stage_name} 不存在")
-
-        # 检查阶段状态
-        # if stage.status == 'processing':
-        #     raise serializers.ValidationError(f"阶段 {stage_name} 正在处理中")
+            raise serializers.ValidationError(
+                ErrorMessage.STAGE_NOT_FOUND.format(stage_name=stage_name)
+            )
 
         return attrs
 

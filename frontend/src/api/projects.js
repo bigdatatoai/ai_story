@@ -60,8 +60,6 @@ export default {
    * @param {Object} inputData - 输入数据(可选)
    */
   executeStage(projectId, stageName, inputData = {}) {
-    console.log(444, projectId, stageName, inputData)
-
     return apiClient.post(`/projects/projects/${projectId}/execute_stage/`, {
       stage_name: stageName,
       input_data: inputData,
@@ -93,6 +91,17 @@ export default {
    */
   resumeProject(projectId) {
     return apiClient.post(`/projects/projects/${projectId}/resume/`);
+  },
+
+  /**
+   * 获取任务状态
+   * @param {String} projectId - 项目ID
+   * @param {String} taskId - 任务ID
+   */
+  getTaskStatus(projectId, taskId) {
+    return apiClient.get(`/projects/projects/${projectId}/task-status/`, {
+      params: { task_id: taskId },
+    });
   },
 
   /**
